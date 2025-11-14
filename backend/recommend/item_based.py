@@ -88,8 +88,8 @@ def recommend_by_item(app_id: int):
     result: list[str] = []
     for other_app_id, sim in top_items:
         title = app_titles.get(other_app_id, f"app_id {other_app_id}")
-        result.append(f"{title} (app_id={other_app_id})")
-        # result.append(f"{title} (app_id={other_app_id}, sim={sim:.3f})")
+        # result.append(f"{title} (app_id={other_app_id})")
+        result.append(f"{title} (app_id={other_app_id}, sim={sim:.3f})")
         
     return {
         "type": "item_based",

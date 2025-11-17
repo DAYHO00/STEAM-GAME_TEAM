@@ -38,11 +38,11 @@ R = csr_matrix((values, (rows, cols)),
 
 N_USERS, N_GAMES = R.shape
 
-# Item → Users mapping
+# Item → Users mapping (게임 기준으로, 해당 게임을 추천한 유저들의 인덱스 목록)
 R_T = R.T.tocsr()
 ITEM_USERS = [np.sort(R_T[i].indices) for i in range(N_GAMES)]
 
-# Pre-cache lengths and sqrt lengths
+# 각 게임별 추천한 유저 수 및 그 제곱근 (코사인 유사도 분모에 사용)
 ITEM_USER_LEN = np.array([len(u) for u in ITEM_USERS])
 SQRT_ITEM_USER_LEN = np.sqrt(ITEM_USER_LEN)
 
@@ -50,9 +50,9 @@ SQRT_ITEM_USER_LEN = np.sqrt(ITEM_USER_LEN)
 # ----------------------------------------------------------
 # 2. 하이퍼파라미터
 # ----------------------------------------------------------
-BETA = 10
-MIN_INTERSECTION = 2
-MAX_CANDIDATES = 200
+BETA = 10            # Discount에 사용: 교집합 크기가 BETA 이상이면 패널티 1, 미만이면 inter_cnt / BETA 만큼 감소
+MIN_INTERSECTION = 2 # 두 게임을 함께 추천한 유저가 2명 미만이면 유사도 0으로 처리 (노이즈 제거용)
+MAX_CANDIDATES = 200 # 후보 아이템을 Co-occurrence로 뽑을 때 상위 200개까지만 사용 (속도/메모리 절약)
 
 
 
@@ -63,14 +63,19 @@ def fast_intersection_size(a, b):
     i = j = cnt = 0
     la, lb = len(a), len(b)
 
+    # a, b는 오름차순 정렬된 "유저 인덱스 배열"
+    # 두 배열의 교집합 크기를 O(len(a) + len(b)) 에 구하는 투 포인터 알고리즘
     while i < la and j < lb:
         if a[i] == b[j]:
+            # 같은 유저 인덱스 → 교집합 1 증가
             cnt += 1
             i += 1
             j += 1
         elif a[i] < b[j]:
+            # a[i]가 더 작으면 a 쪽 포인터를 한 칸 이동
             i += 1
         else:
+            # b[j]가 더 작으면 b 쪽 포인터를 한 칸 이동
             j += 1
 
     return cnt
@@ -83,82 +88,119 @@ def fast_intersection_size(a, b):
 @lru_cache(maxsize=300_000)
 def item_similarity(i_idx, j_idx):
     """
-    문서 기반 item-item similarity:
-    - Cosine similarity
-    - Discount factor
-    - LRU 캐시로 반복 계산 최적화
+    두 게임 i, j 사이의 "아이템 기반 유사도"를 계산하는 함수.
+
+    - 입력:
+        i_idx: 게임 i의 내부 인덱스 (0 ~ N_GAMES-1)
+        j_idx: 게임 j의 내부 인덱스 (0 ~ N_GAMES-1)
+
+    - 내부 로직:
+        1) 각 게임을 추천한 유저 집합 U_i, U_j를 가져온다.
+        2) U_i ∩ U_j (두 게임을 모두 추천한 유저 수)를 구한다.
+        3) 교집합 크기가 너무 작으면(신뢰도 낮음) 유사도를 0으로 처리한다.
+        4) 코사인 유사도: |U_i ∩ U_j| / (sqrt(|U_i|) * sqrt(|U_j|)) 계산
+        5) Discount factor: min(|U_i ∩ U_j| / BETA, 1.0)을 곱해,
+           공통 유저 수가 적으면 유사도를 줄이는 효과를 준다.
+        6) LRU 캐시를 사용하여 (i_idx, j_idx) 조합에 대해 한 번 계산된 유사도는
+           메모리에 저장해 두고, 이후 재사용할 때는 계산 없이 바로 반환한다.
+
+    - 출력:
+        float 유사도 값 (0.0 이상, 코사인 * discount)
     """
 
-    # 두 게임을 좋아한 유저 목록
-    users_i = ITEM_USERS[i_idx]
-    users_j = ITEM_USERS[j_idx]
+    # 두 게임을 좋아한 유저 목록 (정렬된 유저 인덱스 배열)
+    users_i = ITEM_USERS[i_idx]  # 게임 i를 추천한 유저들의 인덱스 리스트
+    users_j = ITEM_USERS[j_idx]  # 게임 j를 추천한 유저들의 인덱스 리스트
 
-    # 교집합 크기
+    # 1) 교집합 크기 = 두 게임을 모두 추천한 유저 수 = |U_i ∩ U_j|
     inter_cnt = fast_intersection_size(users_i, users_j)
+
+    # 2) 교집합이 너무 작으면 (예: 0명 또는 1명) → 우연일 수 있다고 보고 유사도 0 처리
+    #    MIN_INTERSECTION=2 이므로, 최소 2명 이상이 두 게임을 모두 추천해야 유사도를 인정.
     if inter_cnt < MIN_INTERSECTION:
         return 0.0
 
-    # 코사인 유사도
+    # 3) 코사인 유사도의 분모: sqrt(|U_i|) * sqrt(|U_j|)
+    #    ITEM_USER_LEN[i_idx] = |U_i|, SQRT_ITEM_USER_LEN[i_idx] = sqrt(|U_i|)
     denom = SQRT_ITEM_USER_LEN[i_idx] * SQRT_ITEM_USER_LEN[j_idx]
     if denom == 0:
+        # 어떤 게임이 한 번도 추천되지 않았다면 (추천 유저 수가 0)
+        # 분모가 0 → 유사도 정의 불가 → 0.0 반환
         return 0.0
 
+    # 4) 기본 코사인 유사도:
+    #    Sim_cos(i,j) = |U_i ∩ U_j| / (sqrt(|U_i|) * sqrt(|U_j|))
     sim = inter_cnt / denom
 
-    # Discount 적용
+    # 5) Discount factor 적용:
+    #    DiscountedSim(i,j) = Sim_cos(i,j) * min(|U_i ∩ U_j| / BETA, 1.0)
+    #    - 교집합 유저 수가 BETA 미만이면 비율만큼 곱해서 유사도를 줄임
+    #    - BETA 이상이면 1.0을 곱하므로 더 이상 깎지 않음
     sim *= min(inter_cnt / BETA, 1.0)
 
+    # 최종 유사도 반환
     return sim
 
 
 
 # ----------------------------------------------------------
-# 5. 예측값 계산 (문서 정석)
+# 5. 예측값 계산 (문서 정석에서 "정규화"만 제거한 버전)
 # ----------------------------------------------------------
 def predict_score(user_idx, target_item_idx):
     """
-    문서 정석 공식:
-    
-    r_hat(a,p) =
-        sum_q (DiscountSim(p,q) * r_(a,q))
-        -----------------------------------
-        sum_q |DiscountSim(p,q)|
+    특정 유저(user_idx)가 아직 플레이/추천하지 않은 게임(target_item_idx)에 대해
+    "얼마나 좋아할 것 같은지"를 점수로 예측하는 함수.
 
-    r=1 이므로 weighted_sum = sum(sim)
+    아이템 기반 협업 필터링의 아이디어:
+    - "유저가 과거에 좋아했던 게임들"과
+    - "지금 점수를 매기려는 타겟 게임" 사이의 유사도(DiscountedSim)를 이용한다.
+
+    여기서는 r_(a,q) ∈ {0,1}(추천 여부) 이고,
+    분모의 sum(|Sim|)로 나누는 정규화를 제거하고
+    단순히 "유사도의 합"을 점수로 사용한다.
+
+    직관:
+    - 유저가 좋아했던 게임들 중에서
+      타겟 게임과 "비슷한 게임"이 많을수록 점수는 커진다.
+    - 각 비슷한 게임의 유사도가 클수록 점수는 더 커진다.
+
+    수식 형태:
+    - I_a: 유저 a가 추천했던 게임들의 집합
+    - DiscountedSim(p, q): item_similarity에서 계산한 유사도
+    - 예측 점수:
+        r_hat(a, p) = sum_{q ∈ I_a} DiscountedSim(p, q)
     """
 
-    # rated_items = R[user_idx].indices
-    # if len(rated_items) == 0:
-    #     return 0
-
-    # sims = []
-    # weighted = []
-
-    # for q in rated_items:
-    #     sim = item_similarity(target_item_idx, q)
-    #     if sim > 0:
-    #         sims.append(abs(sim))
-    #         weighted.append(sim)  # r=1
-
-    # if not sims:
-    #     return 0
-
-    # sims = np.array(sims)
-    # weighted = np.array(weighted)
-
-    # return weighted.sum() / sims.sum()
-
+    # 1) 해당 유저가 추천한(좋아한) 게임들의 인덱스 목록
+    #    R[user_idx]는 "그 유저의 행"이고, .indices는 값이 0이 아닌 열 인덱스(=is_recommended=1인 게임)
     rated_items = R[user_idx].indices
     if len(rated_items) == 0:
+        # 이 유저가 아직 아무 게임도 추천하지 않았다면
+        # 이웃 기반 CF로는 예측 불가 → 0.0 반환 (혹은 콜드스타트 처리를 따로 해야 함)
         return 0.0
 
+    # 2) 점수 누적 변수
     score = 0.0
+
+    # 3) 유저가 좋아했던 각 게임 q에 대해,
+    #    타겟 게임(target_item_idx)과의 유사도 sim을 계산하고 모두 합산
     for q in rated_items:
+        # item_similarity(target, q) = DiscountedSim(target, q)
         sim = item_similarity(target_item_idx, q)
+
+        # 유사도가 0 이하이면(0 포함) 기여도가 없으므로 건너뛴다.
+        # - 0인 경우: 교집합이 작거나, 아예 없거나, 분모=0 등으로 판단된 "비슷하지 않은 게임"
+        # - 음수 sim은 여기서는 나오지 않지만, 안전하게 <= 0일 때 skip
         if sim <= 0:
             continue
-        score += sim   # r=1 이므로 sim 그대로 합산
 
+        # r_(a,q) = 1 (해당 유저가 q를 추천한 게임만 q에 포함되므로)
+        # → 가중합 sum(sim * r)에서 r=1 이라 sim만 더하면 됨
+        score += sim
+
+    # 4) 최종 점수 반환
+    #    - 절대값은 중요하지 않고, "다른 게임들과의 상대적 크기"가 중요
+    #    - 이 값이 큰 게임일수록 유저의 취향과 더 잘 맞을 것으로 예측
     return score
 
 
@@ -167,6 +209,20 @@ def predict_score(user_idx, target_item_idx):
 # 6. 추천 함수 (정석 + 후보 Pruning 최적화)
 # ----------------------------------------------------------
 def recommend_by_item(user_id: int):
+    """
+    주어진 user_id에 대해 "아이템 기반 협업 필터링"으로
+    추천 게임 Top-N (여기서는 5개)을 반환하는 함수.
+
+    전체 흐름:
+    1) user_id를 내부 인덱스로 변환
+    2) 해당 유저가 과거에 추천했던 게임 목록을 가져옴
+    3) 그 게임들을 같이 추천했던 다른 유저들이 또 어떤 게임들을 추천했는지 기반으로
+       "후보 게임"을 Co-occurrence 형태로 수집
+    4) 각 후보 게임에 대해 predict_score(유사도 합)를 계산
+    5) 점수 기준 내림차순 정렬 후 상위 5개를 추천 리스트로 반환
+    """
+
+    # 1) 존재하지 않는 user_id에 대한 방어 로직
     if user_id not in USER2IDX:
         return {
             "type": "item_based_paper",
@@ -175,10 +231,16 @@ def recommend_by_item(user_id: int):
             "message": "사용자가 존재하지 않습니다."
         }
 
+    # 2) user_id → 내부 유저 인덱스(u_idx) 변환
     u_idx = USER2IDX[user_id]
+
+    # 이 유저가 추천한 게임들의 인덱스 목록
     rated_items = R[u_idx].indices
+    # 집합으로도 만들어두면 "이미 본 게임"을 O(1)에 제외할 수 있음
     rated_set = set(rated_items)
 
+    # 3) 이 유저가 아직 아무 게임도 추천하지 않았다면
+    #    아이템 기반 CF(이웃 기반)로는 추천 불가 → 안내 메시지
     if len(rated_items) == 0:
         return {
             "type": "item_based_paper",
@@ -188,11 +250,20 @@ def recommend_by_item(user_id: int):
         }
 
     # ------ 후보 아이템 수집 (Co-occurrence 기반) ------
+    # common_counter[g] = "유저가 좋아했던 게임들과 함께 추천된 게임 g의 등장 횟수"
     common_counter = Counter()
+
+    # 사용자가 좋아했던 각 게임 item 에 대해
     for item in rated_items:
+        # 그 게임을 추천한 모든 유저 u에 대해
         for u in ITEM_USERS[item]:
+            # 그 유저 u가 추천한 모든 게임들을 카운트 증가
+            # R[u].indices = "유저 u가 추천한 게임들의 인덱스"
             common_counter.update(R[u].indices)
 
+    # common_counter.most_common(MAX_CANDIDATES)는
+    # "내가 좋아했던 게임들과 자주 같이 추천되었던 게임" 상위 200개를 의미.
+    # 이 중에서 이미 내가 추천한 게임(rated_set에 포함된 것)은 제외한다.
     candidate_items = [
         g for g, _ in common_counter.most_common(MAX_CANDIDATES)
         if g not in rated_set
@@ -200,11 +271,17 @@ def recommend_by_item(user_id: int):
 
     # ------ 예측값 계산 ------
     predictions = []
+
+    # 각 후보 게임에 대해
     for item in candidate_items:
+        # 이 유저(u_idx)가 그 게임(item)을 얼마나 좋아할지 점수 예측
         score = predict_score(u_idx, item)
         if score > 0:
+            # (게임 인덱스, 예측 점수) 튜플로 저장
             predictions.append((item, score))
 
+    # 만약 모든 후보에 대해 점수가 0 이하라서 predictions가 비어 있으면
+    # → 추천을 생성할 수 없다고 안내
     if not predictions:
         return {
             "type": "item_based_paper",
@@ -213,8 +290,12 @@ def recommend_by_item(user_id: int):
             "message": "추천 결과를 생성할 수 없습니다."
         }
 
+    # 예측 점수 기준 내림차순 정렬 후 상위 5개만 사용
     predictions = sorted(predictions, key=lambda x: x[1], reverse=True)[:5]
 
+    # 최종적으로:
+    # - title: 게임 제목 (IDX2GAME으로 인덱스를 다시 제목으로 복원)
+    # - sim: 예측 점수 (여기서는 "유사도 합")를 소수 5자리까지 반올림
     return {
         "type": "item_based_paper",
         "input_user_id": user_id,

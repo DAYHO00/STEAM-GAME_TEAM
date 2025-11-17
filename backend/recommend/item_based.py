@@ -50,7 +50,7 @@ SQRT_ITEM_USER_LEN = np.sqrt(ITEM_USER_LEN)
 # ----------------------------------------------------------
 # 2. 하이퍼파라미터
 # ----------------------------------------------------------
-BETA = 5000
+BETA = 10
 MIN_INTERSECTION = 2
 MAX_CANDIDATES = 200
 
@@ -127,26 +127,39 @@ def predict_score(user_idx, target_item_idx):
     r=1 이므로 weighted_sum = sum(sim)
     """
 
+    # rated_items = R[user_idx].indices
+    # if len(rated_items) == 0:
+    #     return 0
+
+    # sims = []
+    # weighted = []
+
+    # for q in rated_items:
+    #     sim = item_similarity(target_item_idx, q)
+    #     if sim > 0:
+    #         sims.append(abs(sim))
+    #         weighted.append(sim)  # r=1
+
+    # if not sims:
+    #     return 0
+
+    # sims = np.array(sims)
+    # weighted = np.array(weighted)
+
+    # return weighted.sum() / sims.sum()
+
     rated_items = R[user_idx].indices
     if len(rated_items) == 0:
-        return 0
+        return 0.0
 
-    sims = []
-    weighted = []
-
+    score = 0.0
     for q in rated_items:
         sim = item_similarity(target_item_idx, q)
-        if sim > 0:
-            sims.append(abs(sim))
-            weighted.append(sim)  # r=1
+        if sim <= 0:
+            continue
+        score += sim   # r=1 이므로 sim 그대로 합산
 
-    if not sims:
-        return 0
-
-    sims = np.array(sims)
-    weighted = np.array(weighted)
-
-    return weighted.sum() / sims.sum()
+    return score
 
 
 

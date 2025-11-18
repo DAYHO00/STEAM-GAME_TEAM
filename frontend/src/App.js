@@ -17,8 +17,10 @@ function App() {
       if (!res.ok) throw new Error("서버 응답 오류");
 
       const data = await res.json();
+      console.log("User-based result:", data);
       setResult(data);
     } catch (err) {
+      console.error(err);
       setError("Failed to fetch (User Based)");
     }
   };
@@ -32,10 +34,38 @@ function App() {
       if (!res.ok) throw new Error("서버 응답 오류");
 
       const data = await res.json();
+      console.log("Item-based result:", data);
       setResult(data);
     } catch (err) {
+      console.error(err);
       setError("Failed to fetch (Item Based)");
     }
+  };
+
+  // 점수 필드를 안전하게 꺼내서 포맷팅하는 헬퍼
+  const formatScore = (item) => {
+    const candidates = [
+      item.score,
+      item.similarity,
+      item.sim,
+      item.cosine,
+      item.distance,
+    ];
+
+    for (const v of candidates) {
+      if (v !== null && v !== undefined && !isNaN(Number(v))) {
+        return Number(v).toFixed(5);
+      }
+    }
+
+    for (const [key, value] of Object.entries(item)) {
+      if (key === "title" || key === "name") continue;
+      if (value !== null && value !== undefined && !isNaN(Number(value))) {
+        return Number(value).toFixed(5);
+      }
+    }
+
+    return "-";
   };
 
   return (
@@ -47,7 +77,7 @@ function App() {
         fontFamily: "'Segoe UI', sans-serif",
       }}
     >
-      {/* 상단 제목 영역은 중앙 고정 */}
+      {/* 상단 제목 영역 */}
       <div style={{ maxWidth: "1200px", margin: "0 auto 35px" }}>
         <h1 style={{ fontSize: "2rem", margin: 0 }}>Steam 추천 테스트</h1>
         <p style={{ margin: "6px 0 0", color: "#6b7280" }}>
@@ -55,7 +85,7 @@ function App() {
         </p>
       </div>
 
-      {/* 아래 내용은 전체 폭으로 확장 */}
+      {/* 메인 카드 */}
       <div
         style={{
           width: "100%",
@@ -101,7 +131,7 @@ function App() {
                   flex: 1,
                   padding: "10px",
                   borderRadius: "8px",
-                  border: "1px solid #d1d5db",
+                  border: "1px solid",
                 }}
               />
               <button
@@ -180,7 +210,7 @@ function App() {
           </div>
         )}
 
-        {/* 추천 결과 영역 */}
+        {/* 추천 결과 테이블 */}
         {result && (
           <div style={{ marginTop: "20px" }}>
             <h2>추천 결과</h2>
@@ -221,7 +251,7 @@ function App() {
                         fontFamily: "monospace",
                       }}
                     >
-                      {item.score.toFixed(5)}
+                      {formatScore(item)}
                     </td>
                   </tr>
                 ))}

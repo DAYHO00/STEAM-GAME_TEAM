@@ -6,7 +6,7 @@ from scipy.sparse import csr_matrix
 
 # 전처리된 데이터 경로
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_PATH = BASE_DIR / "processed" / "joined_filtered_6cols.csv"
+DATA_PATH = BASE_DIR / "processed" / "train_6cols.csv"
 
 # CSV 로드
 df = pd.read_csv(DATA_PATH)
@@ -233,3 +233,70 @@ def recommend_by_user(user_id: int):
         "input_user_id": int(user_id),
         "result": recommendation_list
     }
+
+def predict_score_for_user_item(user_id, game_title) -> float:
+    """
+    user_id, game_title에 대해 0~1 사이의 예측 점수를 반환.
+    - user_id 또는 game_title이 학습(Train) 데이터에 없으면 0.0 반환.
+    - 내부적으로 recommend_by_user에서 사용한 neighbor 선택 + 가중합 로직을 그대로 사용.
+    """
+    # 존재 여부 확인
+    if user_id not in USER_MAP:
+        return 0.0
+    if game_title not in GAME_MAP:
+        return 0.0
+
+    user_idx = USER_MAP[user_id]
+    game_idx = GAME_MAP[game_title]
+
+    # 1) 후보 이웃 수집 (train에서 해당 유저가 본 게임을 통해)
+    from collections import defaultdict
+    user_row = R_MATRIX_SPARSE[user_idx]
+    user_game_indices = user_row.indices
+
+    co_count = defaultdict(int)
+    for g_idx in user_game_indices:
+        for other_idx in ITEM_USERS[g_idx]:
+            if other_idx == user_idx:
+                continue
+            co_count[other_idx] += 1
+
+    # 필터링
+    candidates = [u for u, c in co_count.items() if c >= MIN_INTERSECTION]
+    if not candidates:
+        return 0.0
+
+    candidates = sorted(candidates, key=lambda u: co_count[u], reverse=True)[:MAX_CANDIDATES]
+
+    # 2) 후보들에 대해 유사도 계산 (모듈 내부 함수 재사용)
+    sim_scores = {}
+    for other_idx in candidates:
+        sim = _calculate_discounted_similarity_idx(user_idx, other_idx)
+        if sim > 0:
+            other_user_id = int(USER_IDS_UNIQUE[other_idx])
+            sim_scores[other_user_id] = sim
+
+    if not sim_scores:
+        return 0.0
+
+    sorted_sim = pd.Series(sim_scores).sort_values(ascending=False)
+    neighbors = sorted_sim.head(K)   # pandas Series: index=neighbor_user_id, value=sim
+
+    # 3) (user, game)에 대한 예측 점수 계산
+    sim_sum_abs = neighbors.abs().sum()
+    if sim_sum_abs == 0:
+        return 0.0
+
+    numerator = 0.0
+    for neighbor_id, sim_score in neighbors.items():
+        neighbor_idx = USER_MAP.get(neighbor_id)
+        if neighbor_idx is None:
+            continue
+        r_jp = R_MATRIX_SPARSE[neighbor_idx, game_idx]
+        if r_jp != 0:
+            numerator += sim_score * r_jp
+
+    if numerator <= 0:
+        return 0.0
+
+    return float(numerator / sim_sum_abs)

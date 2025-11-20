@@ -7,7 +7,7 @@ from functools import lru_cache
 
 # 0. Load Data
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_PATH = BASE_DIR / "processed" / "joined_filtered_6cols.csv"
+DATA_PATH = BASE_DIR / "processed" / "train_6cols.csv"
 df = pd.read_csv(DATA_PATH)
 print(f"item-based 데이터 로드 완료. shape={df.shape}")
 

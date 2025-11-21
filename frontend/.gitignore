@@ -21,11 +21,3 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-
-backend/data/recommendations.csv
-backend/data/users.csv
-backend/processed/joined_filtered_6cols.csv
-backend/processed/joined_full_6cols.csv
-backend/processed/train_6cols.csv
-backend/processed/test_6cols.csv

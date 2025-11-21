@@ -1,329 +1,348 @@
 """
-bpr_mf.py
+model_based.py
 
-- processed/train_6cols.csv 를 이용해 BPR-MF 학습
-- user_id, app_id 를 인덱스로 매핑
-- triple (u, i, j)를 샘플링하여 SGD로 학습
-- predict_score, predict_scores_for_user, get_top_k_for_user 로 예측/추천
+벡터화된 PyTorch 기반 BPR-MF
+- fit_model(): 학습 후 모델/메타 저장
+- load_model(): 저장된 모델/메타 로딩
+- recommend_by_model(): 추천
 """
 
 import numpy as np
 import pandas as pd
-from pathlib import Path
-from collections import defaultdict
-from typing import Dict, List, Tuple, Optional
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import pickle
+from typing import Optional, Dict, Any
 
 
-class BPRMF:
-    def __init__(
-        self,
-        n_factors: int = 64,
-        learning_rate: float = 0.05,
-        reg: float = 0.01,
-        n_epochs: int = 20,
-        n_samples_per_epoch: Optional[int] = None,
-        random_state: int = 42,
-    ):
-        """
-        n_factors          : 잠재 차원 수 (d)
-        learning_rate      : 학습률
-        reg                : L2 정규화 계수 (벡터에 그대로 곱하게 구현)
-        n_epochs           : 에폭 수
-        n_samples_per_epoch: 에폭당 triple 업데이트 횟수 (None이면 positive 수의 10배)
-        random_state       : 랜덤 시드
-        """
+# ============================================================
+# 0. 전역 상태 (로드 후 FastAPI에서 사용)
+# ============================================================
+_device: torch.device = torch.device("cpu")
+_model: Optional["BPRMF"] = None
+_meta: Dict[str, Any] = {}  # user2idx, idx2user, item2idx, idx2item, user_pos_items 등
+
+
+# ============================================================
+# 1. PyTorch BPR-MF 모델 정의
+# ============================================================
+class BPRMF(nn.Module):
+    def __init__(self, n_users: int, n_items: int, n_factors: int = 32):
+        super().__init__()
+        self.n_users = n_users
+        self.n_items = n_items
         self.n_factors = n_factors
-        self.learning_rate = learning_rate
-        self.reg = reg
-        self.n_epochs = n_epochs
-        self.n_samples_per_epoch = n_samples_per_epoch
-        self.random_state = random_state
 
-        # 학습 후 채워질 것들
-        self.user2idx: Dict[int, int] = {}
-        self.idx2user: Dict[int, int] = {}
-        self.item2idx: Dict[int, int] = {}
-        self.idx2item: Dict[int, int] = {}
+        self.user_emb = nn.Embedding(n_users, n_factors)
+        self.item_emb = nn.Embedding(n_items, n_factors)
 
-        self.n_users: int = 0
-        self.n_items: int = 0
+        nn.init.normal_(self.user_emb.weight, std=0.01)
+        nn.init.normal_(self.item_emb.weight, std=0.01)
 
-        # 유저별 positive 아이템 인덱스 리스트
-        self.user_pos_items: Dict[int, List[int]] = {}
-
-        # 학습된 파라미터
-        self.P: Optional[np.ndarray] = None  # (n_users, n_factors)
-        self.Q: Optional[np.ndarray] = None  # (n_items, n_factors)
-
-        # 랜덤 생성기
-        self.rng = np.random.default_rng(random_state)
-
-    # ------------------------------------------------------------------
-    # 1. 데이터 준비 (user/item 인덱스 매핑 및 positive 리스트 구성)
-    # ------------------------------------------------------------------
-    def _build_mappings(self, train_df: pd.DataFrame):
+    def forward(self, u_idx: torch.Tensor, i_idx: torch.Tensor, j_idx: torch.Tensor):
         """
-        train_df: train_6cols.csv (또는 동일 컬럼 구조를 가진 DataFrame)
-        필요한 컬럼: 'user_id', 'app_id', 'is_recommended'
+        u_idx, i_idx, j_idx: (batch,)
         """
-        # 1) positive 상호작용만 사용 (BPR 특성상)
-        pos_df = train_df[train_df["is_recommended"] == 1].copy()
+        u = self.user_emb(u_idx)          # (batch, d)
+        i = self.item_emb(i_idx)          # (batch, d)
+        j = self.item_emb(j_idx)          # (batch, d)
 
-        # user_id / app_id (아이템) 고유값 추출
-        unique_users = pos_df["user_id"].unique()
-        unique_items = pos_df["app_id"].unique()
+        x_ui = (u * i).sum(dim=1)         # (batch,)
+        x_uj = (u * j).sum(dim=1)         # (batch,)
+        return x_ui, x_uj
 
-        self.n_users = len(unique_users)
-        self.n_items = len(unique_items)
 
-        # 매핑 생성
-        self.user2idx = {u: idx for idx, u in enumerate(unique_users)}
-        self.idx2user = {idx: u for u, idx in self.user2idx.items()}
-        self.item2idx = {i: idx for idx, i in enumerate(unique_items)}
-        self.idx2item = {idx: i for i, idx in self.item2idx.items()}
+# ============================================================
+# 2. 학습 유틸 함수
+# ============================================================
+def _build_mappings(train_df: pd.DataFrame):
+    """
+    train_df: train_6cols.csv
+    필요한 컬럼: user_id, title, is_recommended
+    """
+    pos_df = train_df[train_df["is_recommended"] == 1].copy()
 
-        # 2) 유저별 positive 아이템 인덱스 리스트
-        self.user_pos_items = defaultdict(list)
-        for row in pos_df.itertuples(index=False):
-            u = getattr(row, "user_id")
-            i = getattr(row, "app_id")
-            u_idx = self.user2idx[u]
-            i_idx = self.item2idx[i]
-            self.user_pos_items[u_idx].append(i_idx)
+    unique_users = pos_df["user_id"].unique()
+    unique_items = pos_df["title"].unique()
 
-        # positive 가 1개도 없는 유저는 제거 (있다면)
-        empty_users = [u for u, items in self.user_pos_items.items() if len(items) == 0]
-        for u in empty_users:
-            del self.user_pos_items[u]
+    user2idx = {u: idx for idx, u in enumerate(unique_users)}
+    idx2user = {idx: u for u, idx in user2idx.items()}
 
-        # 3) 파라미터 초기화
-        # 작은 값으로 정규분포 초기화
-        self.P = 0.01 * self.rng.standard_normal(size=(self.n_users, self.n_factors))
-        self.Q = 0.01 * self.rng.standard_normal(size=(self.n_items, self.n_factors))
+    item2idx = {title: idx for idx, title in enumerate(unique_items)}
+    idx2item = {idx: title for title, idx in item2idx.items()}
 
-        # 4) sample 수 설정
-        n_pos = len(pos_df)
-        if self.n_samples_per_epoch is None:
-            # 관측 수가 아무리 커도 너무 크지 않게 상한
-            self.n_samples_per_epoch = min(n_pos, 50000)
+    # positive pairs (user_idx, item_idx)
+    u_idx = pos_df["user_id"].map(user2idx).astype("int64").to_numpy()
+    i_idx = pos_df["title"].map(item2idx).astype("int64").to_numpy()
 
-        print(f"[BPRMF] n_users={self.n_users}, n_items={self.n_items}, n_pos={n_pos}")
-        print(f"[BPRMF] n_samples_per_epoch={self.n_samples_per_epoch}")
+    # 유저별 positive 아이템 (추천 시 이미 본 아이템 제외용)
+    user_pos_items = {}
+    for u, i in zip(u_idx, i_idx):
+        user_pos_items.setdefault(int(u), set()).add(int(i))
 
-    # ------------------------------------------------------------------
-    # 2. triple (u, i, j) 샘플링
-    # ------------------------------------------------------------------
-    def _sample_triplet(self) -> Tuple[int, int, int]:
-        """
-        BPR 학습용 triple (u, i, j) 샘플링
-        u: user index
-        i: positive item index
-        j: negative item index (u의 positive가 아닌 아이템)
-        """
-        # 1) positive interaction이 있는 유저 중 하나 샘플
-        u = self.rng.choice(list(self.user_pos_items.keys()))
-        pos_items_u = self.user_pos_items[u]
+    n_users = len(user2idx)
+    n_items = len(item2idx)
 
-        # 2) 그 유저의 positive 아이템 중 하나 샘플
-        i = self.rng.choice(pos_items_u)
+    print(f"[BPRMF] n_users={n_users}, n_items={n_items}, n_pos={len(u_idx)}")
 
-        # 3) negative 아이템 샘플
-        #    전체 아이템에서 하나 뽑되, u의 positive 에 포함되어 있으면 다시 뽑기
-        while True:
-            j = int(self.rng.integers(0, self.n_items))
-            if j not in pos_items_u:
-                break
+    return (
+        n_users,
+        n_items,
+        u_idx,
+        i_idx,
+        user2idx,
+        idx2user,
+        item2idx,
+        idx2item,
+        user_pos_items,
+    )
 
-        return u, i, j
 
-    # ------------------------------------------------------------------
-    # 3. 한 step(한 triple)에 대한 SGD 업데이트
-    # ------------------------------------------------------------------
-    def _update_one(self, u: int, i: int, j: int):
-        """
-        한 triple (u, i, j)에 대한 BPR 업데이트
-        """
-        assert self.P is not None and self.Q is not None
+def _train_bpr(
+    u_idx: np.ndarray,
+    i_idx: np.ndarray,
+    n_users: int,
+    n_items: int,
+    n_factors: int = 32,
+    epochs: int = 5,
+    batch_size: int = 4096,
+    num_batches_per_epoch: int = 1000,
+    lr: float = 0.05,
+    reg: float = 1e-4,
+) -> BPRMF:
+    """
+    벡터화된 PyTorch 학습 루프
+    - u_idx, i_idx: positive (user,item) 인덱스 배열
+    """
+    global _device
 
-        pu = self.P[u]         # (d,)
-        qi = self.Q[i]         # (d,)
-        qj = self.Q[j]         # (d,)
+    model = BPRMF(n_users, n_items, n_factors=n_factors).to(_device)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
 
-        # 예측 점수
-        x_ui = np.dot(pu, qi)
-        x_uj = np.dot(pu, qj)
-        x_uij = x_ui - x_uj    # Δ = x_ui - x_uj
+    n_pos = len(u_idx)
+    u_idx_t = torch.from_numpy(u_idx).long()
+    i_idx_t = torch.from_numpy(i_idx).long()
 
-        # BPR loss 의 gradient factor: σ(-Δ)
-        # σ(-Δ) = 1 / (1 + exp(Δ))
-        # 값이 너무 커지지 않도록 clip
-        if x_uij > 50:
-            s = 0.0
-        elif x_uij < -50:
-            s = 1.0
-        else:
-            s = 1.0 / (1.0 + np.exp(x_uij))
+    print(
+        f"[BPRMF] Training with epochs={epochs}, batch_size={batch_size}, "
+        f"num_batches_per_epoch={num_batches_per_epoch}, device={_device}"
+    )
 
-        lr = self.learning_rate
-        reg = self.reg
+    for epoch in range(1, epochs + 1):
+        model.train()
+        epoch_loss = 0.0
 
-        # gradient descent step:
-        # pu_new = pu - lr * dL/dpu
-        # dL/dpu = -s*(qi - qj) + reg*pu   (reg는 L2 항의 계수를 reg라고 가정)
-        # ⇒ pu <- pu + lr*s*(qi - qj) - lr*reg*pu
-        pu += lr * (s * (qi - qj) - reg * pu)
+        print(f"\n===== Epoch {epoch}/{epochs} =====")
+        for batch in range(1, num_batches_per_epoch + 1):
+            # 1) positive 샘플 인덱스 뽑기
+            idx = np.random.randint(0, n_pos, size=batch_size)
+            u_batch = u_idx_t[idx].to(_device)
+            i_batch = i_idx_t[idx].to(_device)
 
-        # qi_new = qi - lr * dL/dqi
-        # dL/dqi = -s*pu + reg*qi
-        qi += lr * (s * pu - reg * qi)
+            # 2) negative j 무작위 샘플 (간단하게: uniform sampling, positive일 수도 있지만 확률은 매우 작음)
+            j_batch = torch.randint(0, n_items, (batch_size,), device=_device)
 
-        # qj_new = qj - lr * dL/dqj
-        # dL/dqj = s*pu + reg*qj
-        qj += lr * (-s * pu - reg * qj)
+            optimizer.zero_grad()
 
-        # 다시 저장 (in-place 업데이트라 사실상 필요 없지만, 명시적으로 작성)
-        self.P[u] = pu
-        self.Q[i] = qi
-        self.Q[j] = qj
+            x_ui, x_uj = model(u_batch, i_batch, j_batch)
 
-    # ------------------------------------------------------------------
-    # 4. 학습 루프
-    # ------------------------------------------------------------------
-    def fit(self, train_df: pd.DataFrame):
-        """
-        train_df: train_6cols.csv
-        - 반드시 'user_id', 'app_id', 'is_recommended' 컬럼이 있어야 함
-        """
-        print("[BPRMF] Building mappings and initializing parameters...")
-        self._build_mappings(train_df)
+            # BPR loss = -log σ(x_ui - x_uj) + 정규화
+            x_uij = x_ui - x_uj
+            loss = -torch.log(torch.sigmoid(x_uij) + 1e-10).mean()
 
-        print("[BPRMF] Start training BPR-MF...")
-        for epoch in range(1, self.n_epochs + 1):
-            for _ in range(self.n_samples_per_epoch):
-                u, i, j = self._sample_triplet()
-                self._update_one(u, i, j)
+            # L2 regularization
+            l2_norm = (
+                model.user_emb(u_batch).pow(2).sum()
+                + model.item_emb(i_batch).pow(2).sum()
+                + model.item_emb(j_batch).pow(2).sum()
+            ) / batch_size
+            loss = loss + reg * l2_norm
 
-            # 간단한 로그 (원하면 여기서 valid 성능 측정도 가능)
-            print(f"  - Epoch {epoch}/{self.n_epochs} completed.")
+            loss.backward()
+            optimizer.step()
 
-        print("[BPRMF] Training finished.")
+            epoch_loss += loss.item()
 
-    # ------------------------------------------------------------------
-    # 5. 예측 및 추천
-    # ------------------------------------------------------------------
-    def _get_user_idx(self, user_id: int) -> Optional[int]:
-        return self.user2idx.get(user_id, None)
+            # 진행률 출력 (10% 단위)
+            if batch % max(1, (num_batches_per_epoch // 10)) == 0:
+                percent = int(batch / num_batches_per_epoch * 100)
+                avg_loss = epoch_loss / batch
+                print(
+                    f"  Batch {batch}/{num_batches_per_epoch} "
+                    f"({percent:3d}%) - avg_loss={avg_loss:.4f}"
+                )
 
-    def _get_item_idx(self, item_id: int) -> Optional[int]:
-        return self.item2idx.get(item_id, None)
+        print(f"→ Epoch {epoch} finished. avg_loss={epoch_loss / num_batches_per_epoch:.4f}")
 
-    def predict_score(self, user_id: int, item_id: int) -> float:
-        """
-        (1) 특정 (user_id, app_id)에 대한 단일 평점 예측 함수
-        - user/item 이 학습에 없으면 0.0 반환
-        """
-        if self.P is None or self.Q is None:
-            raise RuntimeError("Model is not trained yet. Call fit() first.")
+    print("[BPRMF] Training finished.")
+    return model
 
-        u_idx = self._get_user_idx(user_id)
-        i_idx = self._get_item_idx(item_id)
-        if u_idx is None or i_idx is None:
-            return 0.0
 
-        score = float(np.dot(self.P[u_idx], self.Q[i_idx]))
-        return score
+# ============================================================
+# 3. 외부에서 호출하는 API 함수들
+# ============================================================
+def fit_model(train_df: pd.DataFrame, model_path, meta_path):
+    """
+    학습 후 모델/메타 파일 저장
+    - model_path: torch state_dict 를 저장할 경로 (예: data/model/bpr_model.pt)
+    - meta_path : 매핑 정보/positive 목록을 저장할 경로 (예: data/model/bpr_meta.pkl)
+    """
+    global _model, _meta
 
-    def predict_scores_for_user(
-        self,
-        user_id: int,
-        exclude_train_interactions: bool = True,
-        train_df: Optional[pd.DataFrame] = None,
-    ) -> Dict[int, float]:
-        """
-        (2) 한 유저에 대해 '모든 후보 아이템'의 예측 점수를 반환하는 함수
-        - 반환: {app_id: score, ...} 형태의 dict
-        - exclude_train_interactions=True 이면 train에서 이미 본 아이템은 제외
-        """
-        if self.P is None or self.Q is None:
-            raise RuntimeError("Model is not trained yet. Call fit() first.")
+    (
+        n_users,
+        n_items,
+        u_idx,
+        i_idx,
+        user2idx,
+        idx2user,
+        item2idx,
+        idx2item,
+        user_pos_items,
+    ) = _build_mappings(train_df)
 
-        u_idx = self._get_user_idx(user_id)
-        if u_idx is None:
-            # cold-start 유저: 빈 dict
-            return {}
+    _model = _train_bpr(
+        u_idx=u_idx,
+        i_idx=i_idx,
+        n_users=n_users,
+        n_items=n_items,
+        n_factors=32,
+        epochs=5,
+        batch_size=4096,
+        num_batches_per_epoch=1000,
+        lr=0.05,
+        reg=1e-4,
+    )
 
-        # 모든 아이템에 대한 점수 계산
-        user_vec = self.P[u_idx]  # (d,)
-        scores = self.Q @ user_vec  # (n_items,)
+    # 모델 저장
+    torch.save(
+        {
+            "state_dict": _model.state_dict(),
+            "n_users": n_users,
+            "n_items": n_items,
+            "n_factors": _model.n_factors,
+        },
+        model_path,
+    )
+    print(f"✅ Saved model weights to {model_path}")
 
-        # 이미 본 아이템 제거 옵션
-        if exclude_train_interactions and train_df is not None:
-            seen_items = set(
-                train_df[
-                    (train_df["user_id"] == user_id) &
-                    (train_df["is_recommended"] == 1)
-                ]["app_id"].map(self.item2idx.get).dropna().astype(int).tolist()
-            )
-        else:
-            seen_items = set()
+    # 메타 정보 저장 (매핑, positive 아이템 목록 등)
+    _meta = {
+        "user2idx": user2idx,
+        "idx2user": idx2user,
+        "item2idx": item2idx,
+        "idx2item": idx2item,
+        "user_pos_items": user_pos_items,
+    }
+    with open(meta_path, "wb") as f:
+        pickle.dump(_meta, f)
+    print(f"✅ Saved meta info to {meta_path}")
 
-        # 후보 아이템 인덱스
-        candidate_indices = [i for i in range(self.n_items) if i not in seen_items]
-        if not candidate_indices:
-            return {}
+    return _model
 
-        # dict: app_id -> score
-        result = {
-            self.idx2item[i]: float(scores[i])
-            for i in candidate_indices
+
+def load_model(model_path, meta_path):
+    """
+    서버 시작 시 호출: 저장해둔 모델/메타를 로딩
+    """
+    global _model, _meta, _device
+
+    # 메타 로드
+    with open(meta_path, "rb") as f:
+        _meta = pickle.load(f)
+
+    user2idx = _meta["user2idx"]
+    item2idx = _meta["item2idx"]
+
+    n_users = len(user2idx)
+    n_items = len(item2idx)
+
+    # 모델 로드
+    checkpoint = torch.load(model_path, map_location=_device)
+    n_factors = checkpoint.get("n_factors", 32)
+
+    _model = BPRMF(n_users, n_items, n_factors=n_factors).to(_device)
+    _model.load_state_dict(checkpoint["state_dict"])
+    _model.eval()
+
+    print(f"✅ Loaded BPR-MF model from {model_path} (users={n_users}, items={n_items})")
+    return _model
+
+
+def recommend_by_model(user_id: int, n_recommendations: int = 5):
+    global _model, _meta, _device
+
+    if _model is None or not _meta:
+        raise RuntimeError("Model is not loaded. Call load_model() first.")
+
+    user2idx = _meta["user2idx"]
+    idx2item = _meta["idx2item"]
+    user_pos_items = _meta["user_pos_items"]
+
+    if user_id not in user2idx:
+        return {
+            "type": "model_based",
+            "input_user_id": int(user_id),
+            "result": [],
+            "message": "사용자 ID가 데이터셋에 없습니다.",
         }
-        return result
 
-    def get_top_k_for_user(
-        self,
-        user_id: int,
-        k: int = 5,
-        exclude_train_interactions: bool = True,
-        train_df: Optional[pd.DataFrame] = None,
-    ) -> List[Tuple[int, float]]:
-        """
-        (3) 한 유저에 대해 Top-K 아이템만 뽑아내는 함수
-        - 내부적으로 predict_scores_for_user를 사용
-        - 반환: [(app_id, score), ...] 점수 내림차순 정렬
-        """
-        scores_dict = self.predict_scores_for_user(
-            user_id=user_id,
-            exclude_train_interactions=exclude_train_interactions,
-            train_df=train_df,
+    u_idx = user2idx[user_id]
+    u_idx_t = torch.tensor([u_idx], device=_device, dtype=torch.long)
+
+    with torch.no_grad():
+        user_vec = _model.user_emb(u_idx_t)               # (1, d)
+        item_vecs = _model.item_emb.weight               # (n_items, d)
+
+        # --- 코사인 유사도 계산 ---
+        user_norm = torch.norm(user_vec)                 # scalar
+        item_norms = torch.norm(item_vecs, dim=1)        # (n_items,)
+
+        # dot / (norm_u * norm_items)
+        cos_scores = torch.matmul(item_vecs, user_vec.t()).squeeze(1) / (
+            item_norms * user_norm + 1e-10
         )
 
-        if not scores_dict:
-            return []
+        # [-1, 1] → [0, 1] 스케일링
+        scores = (cos_scores + 1) / 2
 
-        # score 기준 내림차순 정렬 후 상위 K개 선택
-        sorted_items = sorted(
-            scores_dict.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )
-        top_k = sorted_items[:k]  # [(app_id, score), ...]
-        return top_k
+    scores_np = scores.cpu().numpy().astype(float)
 
-    # 기존 이름 유지하고 싶으면 recommend_for_user는 thin wrapper로 유지
-    def recommend_for_user(
-        self,
-        user_id: int,
-        n_recommendations: int = 5,
-        exclude_train_interactions: bool = True,
-        train_df: Optional[pd.DataFrame] = None,
-    ) -> List[Tuple[int, float]]:
-        """
-        기존 인터페이스 유지용 wrapper:
-        내부적으로 get_top_k_for_user를 호출
-        """
-        return self.get_top_k_for_user(
-            user_id=user_id,
-            k=n_recommendations,
-            exclude_train_interactions=exclude_train_interactions,
-            train_df=train_df,
+    # 이미 본 아이템은 제외
+    seen = user_pos_items.get(u_idx, set())
+    for i in seen:
+        scores_np[i] = -1e9
+
+    n_items = scores_np.shape[0]
+    k = min(n_recommendations, n_items)
+
+    if k == 0:
+        return {
+            "type": "model_based",
+            "input_user_id": int(user_id),
+            "result": [],
+            "message": "추천할 아이템이 없습니다.",
+        }
+    
+    # 상위 k개 인덱스 추출
+    top_k_idx = np.argpartition(-scores_np, k - 1)[:k]
+    top_k_idx = top_k_idx[np.argsort(-scores_np[top_k_idx])]
+
+    # title, predict_score 형태로 변환
+    recommendation_list = []
+    for i in top_k_idx:
+        title = str(idx2item[int(i)])   # title 문자열
+        score = float(scores_np[int(i)])
+        recommendation_list.append(
+            {
+                "title": title,
+                "predicted_score": round(score, 5),
+            }
         )
+
+    return {
+        "type": "model_based",
+        "input_user_id": int(user_id),
+        "result": recommendation_list
+    }

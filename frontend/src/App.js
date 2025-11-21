@@ -3,6 +3,7 @@ import React, { useState } from "react";
 function App() {
   const [userId, setUserId] = useState("");
   const [appId, setAppId] = useState("");
+  const [modelUserId, setModelUserId] = useState("");
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
@@ -47,7 +48,7 @@ function App() {
       setError(null);
       setResult(null);
 
-      const res = await fetch(`${BASE_URL}/recommend/model/${userId}`);
+      const res = await fetch(`${BASE_URL}/recommend/model/${modelUserId}`);
       if (!res.ok) throw new Error("서버 응답 오류");
 
       const data = await res.json();
@@ -227,8 +228,8 @@ function App() {
             <div style={{ display: "flex", gap: "10px" }}>
               <input
                 placeholder="예: 123456"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
+                value={modelUserId}
+                onChange={(e) => setModelUserId(e.target.value)}
                 style={{
                   flex: 1,
                   padding: "10px",

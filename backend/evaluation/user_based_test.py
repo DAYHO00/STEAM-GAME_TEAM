@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+# ----------------- 경로 / 모듈 설정 -----------------
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -18,7 +19,6 @@ if not TEST_CSV.exists():
 SAMPLE_SIZE = 500
 # SAMPLE_SIZE = None
 
-
 if SAMPLE_SIZE is None:
     print(f"Loading full test data from: {TEST_CSV} (may be very slow / memory heavy)")
     df_test = pd.read_csv(TEST_CSV)
@@ -28,6 +28,7 @@ else:
 
 print(f"Test set loaded. Shape: {df_test.shape}")
 
+# ----------------- 예측 스코어 계산 -----------------
 true_labels = []
 pred_scores = []
 
@@ -50,8 +51,9 @@ for i, row in df_test.iterrows():
 true_labels = np.array(true_labels)
 pred_scores = np.array(pred_scores)
 
-# ----- Compute Precision, Recall, Accuracy for threshold = 0.5 -----
-threshold = 0.5
+# ----------------- 단일 threshold 기준 평가 -----------------
+# 여기서 threshold 값을 고정 (예: 0.05)
+threshold = 0.05
 pred_labels = (pred_scores >= threshold).astype(int)
 
 TP = int(((pred_labels == 1) & (true_labels == 1)).sum())
@@ -60,13 +62,20 @@ TN = int(((pred_labels == 0) & (true_labels == 0)).sum())
 FN = int(((pred_labels == 0) & (true_labels == 1)).sum())
 
 precision = TP / (TP + FP) if (TP + FP) > 0 else 0.0
-recall = TP / (TP + FN) if (TP + FN) > 0 else 0.0
-accuracy = (TP + TN) / (TP + TN + FP + FN) if (TP + TN + FP + FN) > 0 else 0.0
+recall    = TP / (TP + FN) if (TP + FN) > 0 else 0.0
+accuracy  = (TP + TN) / (TP + TN + FP + FN) if (TP + TN + FP + FN) > 0 else 0.0
 
-# Compute AUROC for thresholds = 0.00, 0.05, 0.10, 0.15, ..., 1.00
+# ===== F1-score 추가 부분 =====
+if precision + recall > 0:
+    f1 = 2 * (precision * recall) / (precision + recall)
+else:
+    f1 = 0.0
+
+# ----------------- ROC / AUROC 계산 -----------------
 thresholds = np.arange(0.0, 1.0001, 0.05)
 TPRs = []
 FPRs = []
+
 for t in thresholds:
     pl = (pred_scores >= t).astype(int)
     tp = int(((pl == 1) & (true_labels == 1)).sum())
@@ -74,10 +83,14 @@ for t in thresholds:
     tn = int(((pl == 0) & (true_labels == 0)).sum())
     fn = int(((pl == 0) & (true_labels == 1)).sum())
 
-    tpr = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    tpr = tp / (tp + fn) if (tp + fn) > 0 else 0.0  # recall과 동일
     fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
-    print(f"threshold={t:.2f}  TPR={tpr:.4f}  FPR={fpr:.4f}  (TP={tp}, FP={fp}, TN={tn}, FN={fn})")
-    
+
+    print(
+        f"threshold={t:.2f}  TPR={tpr:.4f}  FPR={fpr:.4f}  "
+        f"(TP={tp}, FP={fp}, TN={tn}, FN={fn})"
+    )
+
     TPRs.append(tpr)
     FPRs.append(fpr)
 
@@ -87,41 +100,28 @@ sort_idx = np.argsort(fpr_arr)
 fpr_sorted = fpr_arr[sort_idx]
 tpr_sorted = tpr_arr[sort_idx]
 
-# AUROC 계산
+# AUROC 계산 (사다리꼴 적분)
 auroc = float(np.trapezoid(tpr_sorted, fpr_sorted))
 
-# ----- 출력 -----
+# ----------------- 최종 출력 -----------------
 print("\n=== Evaluation Results ===")
 print(f"Number of test rows: {len(df_test)}")
 print(f"Threshold for classification: {threshold}")
 print(f"TP={TP}, FP={FP}, TN={TN}, FN={FN}")
 print(f"Precision: {precision:.6f}")
 print(f"Recall:    {recall:.6f}")
+print(f"F1-score:  {f1:.6f}")
 print(f"Accuracy:  {accuracy:.6f}")
 print(f"AUROC (sweep 0->1 step 0.05): {auroc:.6f}")
 
-# ----- ROC visualization -----
+# ----------------- ROC 시각화 -----------------
 plt.figure(figsize=(6, 6))
-plt.plot(fpr_sorted, tpr_sorted)        # ROC curve
-plt.plot([0, 1], [0, 1], linestyle='--')  # diagonal line
+plt.plot(fpr_sorted, tpr_sorted, label="ROC curve")
+plt.plot([0, 1], [0, 1], linestyle='--', label="Random")
 plt.xlabel("False Positive Rate")
 plt.ylabel("True Positive Rate")
 plt.title(f"ROC Curve (AUROC = {auroc:.4f})")
 plt.grid(True)
+plt.legend()
 plt.tight_layout()
-
-# 화면에 표시
 plt.show()
-
-# ----- (선택) ROC 사진 png로 저장 -----
-# out_fig = Path(__file__).parent / "roc_curve.png"
-# plt.savefig(out_fig)
-# print(f"Saved ROC plot to: {out_fig}")
-
-# ----- (선택) 결과 csv로 저장 -----
-# out_df = df_test.copy()
-# out_df['pred_score'] = pred_scores
-# out_df['pred_label_0.5'] = pred_labels
-# out_path = Path(__file__).parent / 'user_based_test_results.csv'
-# out_df.to_csv(out_path, index=False)
-# print(f"Saved results to: {out_path}")

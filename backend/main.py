@@ -28,3 +28,7 @@ def get_user_based_recommendation(user_id: int):
 @app.get("/recommend/item/{app_id}")
 def get_item_based_recommendation(app_id: int):
     return recommend_by_item(app_id)
+
+@app.get("/recommend/model/{user_id}")
+def get_model_based_recommendation(user_id: int):
+    return recommend_by_model(user_id)

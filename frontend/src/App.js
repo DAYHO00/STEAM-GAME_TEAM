@@ -42,7 +42,23 @@ function App() {
     }
   };
 
-  // 점수 필드를 안전하게 꺼내서 포맷팅하는 헬퍼
+  const handleModelBased = async () => {
+    try {
+      setError(null);
+      setResult(null);
+
+      const res = await fetch(`${BASE_URL}/recommend/model/${userId}`);
+      if (!res.ok) throw new Error("서버 응답 오류");
+
+      const data = await res.json();
+      console.log("Model-based result:", data);
+      setResult(data);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to fetch (Model Based)");
+    }
+  };
+
   const formatScore = (item) => {
     const candidates = [
       item.score,
@@ -77,15 +93,15 @@ function App() {
         fontFamily: "'Segoe UI', sans-serif",
       }}
     >
-      {/* 상단 제목 영역 */}
+      {/* HEADER */}
       <div style={{ maxWidth: "1200px", margin: "0 auto 35px" }}>
         <h1 style={{ fontSize: "2rem", margin: 0 }}>Steam 추천 테스트</h1>
         <p style={{ margin: "6px 0 0", color: "#6b7280" }}>
-          User-based / Item-based 추천 결과를 확인해보세요.
+          User-based / Item-based / Model-based 추천 결과를 확인해보세요.
         </p>
       </div>
 
-      {/* 메인 카드 */}
+      {/* MAIN CARD */}
       <div
         style={{
           width: "100%",
@@ -97,7 +113,7 @@ function App() {
           boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
         }}
       >
-        {/* 입력 카드 영역 */}
+        {/* ---- INPUT ZONE ---- */}
         <div
           style={{
             display: "flex",
@@ -167,7 +183,7 @@ function App() {
 
             <div style={{ display: "flex", gap: "10px" }}>
               <input
-                placeholder="예: 730"
+                placeholder="예: 123456"
                 value={appId}
                 onChange={(e) => setAppId(e.target.value)}
                 style={{
@@ -192,9 +208,52 @@ function App() {
               </button>
             </div>
           </div>
+
+          {/* Model-based */}
+          <div
+            style={{
+              flex: "1 1 400px",
+              padding: "20px",
+              background: "#f9fafb",
+              borderRadius: "12px",
+              border: "1px solid #e5e7eb",
+            }}
+          >
+            <h3>Model-based 추천</h3>
+            <p style={{ margin: "6px 0 12px", color: "#6b7280" }}>
+              추천을 받을 <b>user_id</b>를 입력하세요.
+            </p>
+
+            <div style={{ display: "flex", gap: "10px" }}>
+              <input
+                placeholder="예: 123456"
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+                style={{
+                  flex: 1,
+                  padding: "10px",
+                  borderRadius: "8px",
+                  border: "1px solid #d1d5db",
+                }}
+              />
+              <button
+                onClick={handleModelBased}
+                style={{
+                  padding: "10px 16px",
+                  background: "linear-gradient(135deg, #d97706, #f59e0b)",
+                  color: "white",
+                  borderRadius: "8px",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                실행
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* 에러 메시지 */}
+        {/* ---- ERROR ---- */}
         {error && (
           <div
             style={{
@@ -210,7 +269,7 @@ function App() {
           </div>
         )}
 
-        {/* 추천 결과 테이블 */}
+        {/* ---- RESULT TABLE ---- */}
         {result && (
           <div style={{ marginTop: "20px" }}>
             <h2>추천 결과</h2>

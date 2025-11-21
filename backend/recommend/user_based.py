@@ -48,9 +48,9 @@ W_P_SERIES = pd.Series(np.log(N_USERS / n_p), index=GAME_TITLES_UNIQUE)
 W_P_ARR = W_P_SERIES.values                              # numpy array로 캐시
 
 # 3. 전역 파라미터
-BETA = 5      # 교집합 감쇠 기준값
+BETA = 10      # 교집합 감쇠 기준값
 K = 20        # 이웃 수
-MIN_INTERSECTION = 3      # 후보 이웃으로 인정할 최소 공통 게임 수
+MIN_INTERSECTION = 1      # 후보 이웃으로 인정할 최소 공통 게임 수
 MAX_CANDIDATES = 5000     # 유사도 계산 대상 최대 이웃 수
 
 USER_IDS = USER_IDS_UNIQUE
@@ -197,19 +197,23 @@ def recommend_by_user(user_id: int):
 
     sim_sum_abs = neighbors.abs().sum()
 
-    # 4. 각 후보 게임에 대해 예측 점수 계산
+       # 4. 각 후보 게임에 대해 예측 점수 계산 (수정 버전)
     prediction_scores = {}
     for game_idx in candidate_games.keys():
         numerator = 0.0
+        denom = 0.0
+
         for neighbor_id, sim_score in neighbors.items():
             neighbor_idx = USER_MAP[neighbor_id]
             r_jp = R_MATRIX_SPARSE[neighbor_idx, game_idx]  # 0 또는 1
             if r_jp != 0:
                 numerator += sim_score * r_jp
+                denom += abs(sim_score)
 
-        if sim_sum_abs > 0 and numerator > 0:
+        if denom > 0 and numerator > 0:
             game_title = INV_GAME_MAP[game_idx]
-            prediction_scores[game_title] = numerator / sim_sum_abs
+            prediction_scores[game_title] = numerator / denom
+
 
     if not prediction_scores:
         return {
@@ -282,21 +286,21 @@ def predict_score_for_user_item(user_id, game_title) -> float:
     sorted_sim = pd.Series(sim_scores).sort_values(ascending=False)
     neighbors = sorted_sim.head(K)   # pandas Series: index=neighbor_user_id, value=sim
 
-    # 3) (user, game)에 대한 예측 점수 계산
-    sim_sum_abs = neighbors.abs().sum()
-    if sim_sum_abs == 0:
-        return 0.0
-
+      # 3) (user, game)에 대한 예측 점수 계산 (수정 버전)
     numerator = 0.0
+    denom = 0.0
+
     for neighbor_id, sim_score in neighbors.items():
         neighbor_idx = USER_MAP.get(neighbor_id)
         if neighbor_idx is None:
             continue
-        r_jp = R_MATRIX_SPARSE[neighbor_idx, game_idx]
+        r_jp = R_MATRIX_SPARSE[neighbor_idx, game_idx]  # 0 또는 1
         if r_jp != 0:
             numerator += sim_score * r_jp
+            denom += abs(sim_score)
 
-    if numerator <= 0:
+    if denom == 0 or numerator <= 0:
         return 0.0
 
-    return float(numerator / sim_sum_abs)
+    return float(numerator / denom)
+

@@ -84,23 +84,25 @@ def item_similarity(i_idx, j_idx):
 
 # 5. 예측값 계산
 def predict_item_scores(user_idx, candidate_items, rated_items):
-    """
-    candidate_items: 추천 후보 아이템 리스트
-    rated_items: 사용자가 추천한 아이템 리스트
-    return: {item_idx: score}
-    """
     scores = {}
 
     for item in candidate_items:
-        s = 0.0
+        num = 0.0
+        den = 0.0
+
         for r in rated_items:
             sim = item_similarity(item, r)
             if sim > 0:
-                s += sim  # weighted sum
+                num += sim
+                den += abs(sim)
 
-        scores[item] = s
+        if den == 0:
+            scores[item] = 0.0
+        else:
+            scores[item] = num / den  
 
     return scores
+
 
 # 6. Top-K 추출만 전담하는 함수
 def top_k_recommend(scores_dict, k=5):
@@ -137,6 +139,8 @@ def recommend_by_item(user_id: int):
 
         for u in users:
             for g in R[u].indices:
+                if g in rated_set:            
+                    continue
                 if ITEM_USER_LEN[g] > POPULARITY_CAP:
                     continue
                 common_counter[g] += 1 / (1 + ITEM_USER_LEN[g])

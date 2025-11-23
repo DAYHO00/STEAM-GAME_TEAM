@@ -1,64 +1,52 @@
+// frontend/src/App.js
 import React, { useState } from "react";
 
 function App() {
   const [userId, setUserId] = useState("");
   const [appId, setAppId] = useState("");
   const [modelUserId, setModelUserId] = useState("");
+  const [advUserId, setAdvUserId] = useState("");
+  const [advItemUserId, setAdvItemUserId] = useState("");
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
   const BASE_URL = "http://127.0.0.1:8000";
 
-  const handleUserBased = async () => {
+  const handleFetch = async (url, label) => {
     try {
       setError(null);
       setResult(null);
-
-      const res = await fetch(`${BASE_URL}/recommend/user/${userId}`);
+      const res = await fetch(url);
       if (!res.ok) throw new Error("서버 응답 오류");
-
       const data = await res.json();
-      console.log("User-based result:", data);
+      console.log(`${label} result:`, data);
       setResult(data);
     } catch (err) {
       console.error(err);
-      setError("Failed to fetch (User Based)");
+      setError(`Failed to fetch (${label})`);
     }
   };
 
-  const handleItemBased = async () => {
-    try {
-      setError(null);
-      setResult(null);
+  const handleUserBased = () =>
+    handleFetch(`${BASE_URL}/recommend/user/${userId}`, "User Based");
 
-      const res = await fetch(`${BASE_URL}/recommend/item/${appId}`);
-      if (!res.ok) throw new Error("서버 응답 오류");
+  const handleItemBased = () =>
+    handleFetch(`${BASE_URL}/recommend/item/${appId}`, "Item Based");
 
-      const data = await res.json();
-      console.log("Item-based result:", data);
-      setResult(data);
-    } catch (err) {
-      console.error(err);
-      setError("Failed to fetch (Item Based)");
-    }
-  };
+  const handleModelBased = () =>
+    handleFetch(`${BASE_URL}/recommend/model/${modelUserId}`, "Model Based");
 
-  const handleModelBased = async () => {
-    try {
-      setError(null);
-      setResult(null);
+  const handleUserBasedAdvanced = () =>
+    handleFetch(
+      `${BASE_URL}/recommend/user-advanced/${advUserId}`,
+      "User Based Advanced"
+    );
 
-      const res = await fetch(`${BASE_URL}/recommend/model/${modelUserId}`);
-      if (!res.ok) throw new Error("서버 응답 오류");
-
-      const data = await res.json();
-      console.log("Model-based result:", data);
-      setResult(data);
-    } catch (err) {
-      console.error(err);
-      setError("Failed to fetch (Model Based)");
-    }
-  };
+  const handleItemBasedAdvanced = () =>
+    handleFetch(
+      `${BASE_URL}/recommend/item-advanced/${advItemUserId}`,
+      "Item Based Advanced"
+    );
 
   const formatScore = (item) => {
     const candidates = [
@@ -68,20 +56,17 @@ function App() {
       item.cosine,
       item.distance,
     ];
-
     for (const v of candidates) {
       if (v !== null && v !== undefined && !isNaN(Number(v))) {
         return Number(v).toFixed(5);
       }
     }
-
     for (const [key, value] of Object.entries(item)) {
       if (key === "title" || key === "name") continue;
       if (value !== null && value !== undefined && !isNaN(Number(value))) {
         return Number(value).toFixed(5);
       }
     }
-
     return "-";
   };
 
@@ -98,7 +83,8 @@ function App() {
       <div style={{ maxWidth: "1200px", margin: "0 auto 35px" }}>
         <h1 style={{ fontSize: "2rem", margin: 0 }}>Steam 추천 테스트</h1>
         <p style={{ margin: "6px 0 0", color: "#6b7280" }}>
-          User-based / Item-based / Model-based 추천 결과를 확인해보세요.
+          User-based / Item-based / Advanced / Model-based 추천 결과를
+          확인해보세요.
         </p>
       </div>
 
@@ -114,7 +100,7 @@ function App() {
           boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
         }}
       >
-        {/* ---- INPUT ZONE ---- */}
+        {/* 1행: User-based / Item-based */}
         <div
           style={{
             display: "flex",
@@ -124,134 +110,76 @@ function App() {
             marginBottom: "25px",
           }}
         >
-          {/* User-based */}
-          <div
-            style={{
-              flex: "1 1 400px",
-              padding: "20px",
-              background: "#f9fafb",
-              borderRadius: "12px",
-              border: "1px solid #e5e7eb",
-            }}
-          >
-            <h3>User-based 추천</h3>
-            <p style={{ margin: "6px 0 12px", color: "#6b7280" }}>
-              추천을 받을 <b>user_id</b>를 입력하세요.
-            </p>
+          <Card
+            title="User-based 추천"
+            desc="추천을 받을 user_id를 입력하세요."
+            placeholder="예: 123456"
+            value={userId}
+            setValue={setUserId}
+            onClick={handleUserBased}
+            gradient="#2563eb, #4f46e5"
+          />
 
-            <div style={{ display: "flex", gap: "10px" }}>
-              <input
-                placeholder="예: 123456"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                style={{
-                  flex: 1,
-                  padding: "10px",
-                  borderRadius: "8px",
-                  border: "1px solid",
-                }}
-              />
-              <button
-                onClick={handleUserBased}
-                style={{
-                  padding: "10px 16px",
-                  background: "linear-gradient(135deg, #2563eb, #4f46e5)",
-                  color: "white",
-                  borderRadius: "8px",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                실행
-              </button>
-            </div>
-          </div>
+          <Card
+            title="Item-based 추천"
+            desc="기준이 될 app_id를 입력하세요."
+            placeholder="예: 570"
+            value={appId}
+            setValue={setAppId}
+            onClick={handleItemBased}
+            gradient="#059669, #10b981"
+          />
+        </div>
 
-          {/* Item-based */}
-          <div
-            style={{
-              flex: "1 1 400px",
-              padding: "20px",
-              background: "#f9fafb",
-              borderRadius: "12px",
-              border: "1px solid #e5e7eb",
-            }}
-          >
-            <h3>Item-based 추천</h3>
-            <p style={{ margin: "6px 0 12px", color: "#6b7280" }}>
-              기준이 될 <b>user_id</b>를 입력하세요.
-            </p>
+        {/* 2행: User-based Advanced / Item-based Advanced */}
+        <div
+          style={{
+            display: "flex",
+            gap: "20px",
+            width: "100%",
+            flexWrap: "wrap",
+            marginBottom: "25px",
+          }}
+        >
+          <Card
+            title="User-based Advanced"
+            desc="고급 User-based로 추천 받을 user_id를 입력하세요."
+            placeholder="예: 123456"
+            value={advUserId}
+            setValue={setAdvUserId}
+            onClick={handleUserBasedAdvanced}
+            gradient="#4c1d95, #7c3aed"
+          />
 
-            <div style={{ display: "flex", gap: "10px" }}>
-              <input
-                placeholder="예: 123456"
-                value={appId}
-                onChange={(e) => setAppId(e.target.value)}
-                style={{
-                  flex: 1,
-                  padding: "10px",
-                  borderRadius: "8px",
-                  border: "1px solid #d1d5db",
-                }}
-              />
-              <button
-                onClick={handleItemBased}
-                style={{
-                  padding: "10px 16px",
-                  background: "linear-gradient(135deg, #059669, #10b981)",
-                  color: "white",
-                  borderRadius: "8px",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                실행
-              </button>
-            </div>
-          </div>
+          <Card
+            title="Item-based Advanced"
+            desc="고급 Item-based로 추천 받을 user_id를 입력하세요."
+            placeholder="예: 123456"
+            value={advItemUserId}
+            setValue={setAdvItemUserId}
+            onClick={handleItemBasedAdvanced}
+            gradient="#0f766e, #14b8a6"
+          />
+        </div>
 
-          {/* Model-based */}
-          <div
-            style={{
-              flex: "1 1 400px",
-              padding: "20px",
-              background: "#f9fafb",
-              borderRadius: "12px",
-              border: "1px solid #e5e7eb",
-            }}
-          >
-            <h3>Model-based 추천</h3>
-            <p style={{ margin: "6px 0 12px", color: "#6b7280" }}>
-              추천을 받을 <b>user_id</b>를 입력하세요.
-            </p>
-
-            <div style={{ display: "flex", gap: "10px" }}>
-              <input
-                placeholder="예: 123456"
-                value={modelUserId}
-                onChange={(e) => setModelUserId(e.target.value)}
-                style={{
-                  flex: 1,
-                  padding: "10px",
-                  borderRadius: "8px",
-                  border: "1px solid #d1d5db",
-                }}
-              />
-              <button
-                onClick={handleModelBased}
-                style={{
-                  padding: "10px 16px",
-                  background: "linear-gradient(135deg, #d97706, #f59e0b)",
-                  color: "white",
-                  borderRadius: "8px",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                실행
-              </button>
-            </div>
-          </div>
+        {/* 3행: Model-based 한 줄 전체 폭 */}
+        <div
+          style={{
+            display: "flex",
+            width: "100%",
+            marginBottom: "10px",
+          }}
+        >
+          <Card
+            title="Model-based 추천"
+            desc="추천을 받을 user_id를 입력하세요."
+            placeholder="예: 123456"
+            value={modelUserId}
+            setValue={setModelUserId}
+            onClick={handleModelBased}
+            gradient="#d97706, #f59e0b"
+            fullWidth // 🔸 한 줄 전체를 쓰도록
+          />
         </div>
 
         {/* ---- ERROR ---- */}
@@ -274,7 +202,6 @@ function App() {
         {result && (
           <div style={{ marginTop: "20px" }}>
             <h2>추천 결과</h2>
-
             <table
               style={{
                 width: "100%",
@@ -292,7 +219,6 @@ function App() {
                   </th>
                 </tr>
               </thead>
-
               <tbody>
                 {result.result?.map((item, idx) => (
                   <tr
@@ -319,6 +245,59 @@ function App() {
             </table>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** 공통 Card 컴포넌트 */
+function Card({
+  title,
+  desc,
+  placeholder,
+  value,
+  setValue,
+  onClick,
+  gradient,
+  fullWidth = false,
+}) {
+  return (
+    <div
+      style={{
+        flex: fullWidth ? "1 1 100%" : "1 1 400px", // 🔸 fullWidth면 한 줄 전체
+        padding: "20px",
+        background: "#f9fafb",
+        borderRadius: "12px",
+        border: "1px solid #e5e7eb",
+      }}
+    >
+      <h3>{title}</h3>
+      <p style={{ margin: "6px 0 12px", color: "#6b7280" }}>{desc}</p>
+      <div style={{ display: "flex", gap: "10px" }}>
+        <input
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          style={{
+            flex: 1,
+            padding: "10px",
+            borderRadius: "8px",
+            border: "1px solid #d1d5db",
+          }}
+        />
+        <button
+          onClick={onClick}
+          style={{
+            padding: "10px 16px",
+            background: `linear-gradient(135deg, ${gradient})`,
+            color: "white",
+            borderRadius: "8px",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          실행
+        </button>
       </div>
     </div>
   );

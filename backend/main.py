@@ -1,9 +1,15 @@
+# backend/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
-import pandas as pd
 
-from recommend import recommend_by_user, recommend_by_item, recommend_by_model
+from recommend import (
+    recommend_by_user,
+    recommend_by_item,
+    recommend_by_model,
+    recommend_by_user_advanced,
+    recommend_by_item_advanced,
+)
 from recommend.model_based import load_model
 
 app = FastAPI()
@@ -13,12 +19,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "http://127.0.0.1:3000"
+        "http://127.0.0.1:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.on_event("startup")
 def load_bpr_model():
@@ -37,6 +44,7 @@ def load_bpr_model():
 
     print("✅ BPR-MF model loaded successfully!")
 
+
 # -------------------------
 # Recommendation Endpoints
 # -------------------------
@@ -53,3 +61,14 @@ def get_item_based_recommendation(app_id: int):
 @app.get("/recommend/model/{user_id}")
 def get_model_based_recommendation(user_id: int):
     return recommend_by_model(user_id)
+
+
+# 🔹 Advanced: 모두 user_id 기반
+@app.get("/recommend/user-advanced/{user_id}")
+def get_user_based_advanced_recommendation(user_id: int):
+    return recommend_by_user_advanced(user_id)
+
+
+@app.get("/recommend/item-advanced/{user_id}")
+def get_item_based_advanced_recommendation(user_id: int):
+    return recommend_by_item_advanced(user_id)

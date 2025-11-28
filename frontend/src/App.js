@@ -1,5 +1,5 @@
 // frontend/src/App.js
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 function App() {
   const [userId, setUserId] = useState("");
@@ -10,20 +10,41 @@ function App() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
+  // 로딩 상태 + 어떤 추천을 돌리는지 라벨
+  const [loading, setLoading] = useState(false);
+  const [currentLabel, setCurrentLabel] = useState("");
+
+  // 게이지용 progress 상태 (0 ~ 100)
+  const [progress, setProgress] = useState(0);
+
   const BASE_URL = "http://127.0.0.1:8000";
 
   const handleFetch = async (url, label) => {
     try {
       setError(null);
       setResult(null);
+      setCurrentLabel(label);
+      setLoading(true);
+
       const res = await fetch(url);
       if (!res.ok) throw new Error("서버 응답 오류");
+
       const data = await res.json();
       console.log(`${label} result:`, data);
+
+      // ✅ result가 비어 있으면 "아이디가 없습니다" 메시지 표시
+      if (!data || (Array.isArray(data.result) && data.result.length === 0)) {
+        setError("아이디가 없습니다.");
+        setResult(null);
+        return;
+      }
+
       setResult(data);
     } catch (err) {
       console.error(err);
       setError(`Failed to fetch (${label})`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -70,6 +91,29 @@ function App() {
     return "-";
   };
 
+  // loading 상태에 따라 게이지 애니메이션
+  useEffect(() => {
+    let intervalId;
+
+    if (loading) {
+      // 로딩 시작: 0부터 서서히 90%까지 증가
+      setProgress(0);
+      intervalId = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 90) return prev;
+          return prev + 2;
+        });
+      }, 200);
+    } else {
+      // 로딩 끝나면 0으로 리셋
+      setProgress(0);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [loading]);
+
   return (
     <div
       style={{
@@ -81,7 +125,7 @@ function App() {
     >
       {/* HEADER */}
       <div style={{ maxWidth: "1200px", margin: "0 auto 35px" }}>
-        <h1 style={{ fontSize: "2rem", margin: 0 }}>Steam 추천 테스트</h1>
+        <h1 style={{ fontSize: "2rem", margin: 0 }}>Steam Recommendation</h1>
         <p style={{ margin: "6px 0 0", color: "#6b7280" }}>
           User-based / Item-based / Advanced / Model-based 추천 결과를
           확인해보세요.
@@ -118,16 +162,18 @@ function App() {
             setValue={setUserId}
             onClick={handleUserBased}
             gradient="#2563eb, #4f46e5"
+            disabled={loading}
           />
 
           <Card
             title="Item-based 추천"
-            desc="기준이 될 app_id를 입력하세요."
+            desc="추천을 받을 user_id를 입력하세요."
             placeholder="예: 570"
             value={appId}
             setValue={setAppId}
             onClick={handleItemBased}
             gradient="#059669, #10b981"
+            disabled={loading}
           />
         </div>
 
@@ -143,22 +189,24 @@ function App() {
         >
           <Card
             title="User-based Advanced"
-            desc="고급 User-based로 추천 받을 user_id를 입력하세요."
+            desc="추천을 받을 user_id를 입력하세요."
             placeholder="예: 123456"
             value={advUserId}
             setValue={setAdvUserId}
             onClick={handleUserBasedAdvanced}
             gradient="#4c1d95, #7c3aed"
+            disabled={loading}
           />
 
           <Card
             title="Item-based Advanced"
-            desc="고급 Item-based로 추천 받을 user_id를 입력하세요."
+            desc="추천을 받을 user_id를 입력하세요."
             placeholder="예: 123456"
             value={advItemUserId}
             setValue={setAdvItemUserId}
             onClick={handleItemBasedAdvanced}
             gradient="#0f766e, #14b8a6"
+            disabled={loading}
           />
         </div>
 
@@ -178,11 +226,64 @@ function App() {
             setValue={setModelUserId}
             onClick={handleModelBased}
             gradient="#d97706, #f59e0b"
-            fullWidth // 🔸 한 줄 전체를 쓰도록
+            fullWidth
+            disabled={loading}
           />
         </div>
 
-        {/* ---- ERROR ---- */}
+        {/* LOADING BOX + 게이지 */}
+        {loading && (
+          <div
+            style={{
+              padding: "14px 16px",
+              marginBottom: "18px",
+              background: "#eff6ff",
+              borderRadius: "10px",
+              border: "1px solid #bfdbfe",
+              color: "#1d4ed8",
+            }}
+          >
+            <div style={{ fontWeight: 600 }}>
+              현재 계산 중입니다. 조금만 기다려주세요.
+            </div>
+            <div style={{ marginTop: 4, fontSize: "0.9rem", color: "#4b5563" }}>
+              데이터 양이 많아 시간이 조금 걸릴 수 있습니다.
+            </div>
+            {currentLabel && (
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: "0.82rem",
+                  color: "#6b7280",
+                }}
+              >
+                요청 유형: <b>{currentLabel}</b>
+              </div>
+            )}
+
+            {/* 게이지 바 */}
+            <div
+              style={{
+                marginTop: 10,
+                height: 8,
+                background: "#dbeafe",
+                borderRadius: 9999,
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  width: `${progress}%`,
+                  height: "100%",
+                  background: "#2563eb",
+                  transition: "width 0.2s ease-out",
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ERROR */}
         {error && (
           <div
             style={{
@@ -198,7 +299,7 @@ function App() {
           </div>
         )}
 
-        {/* ---- RESULT TABLE ---- */}
+        {/* RESULT TABLE */}
         {result && (
           <div style={{ marginTop: "20px" }}>
             <h2>추천 결과</h2>
@@ -260,15 +361,16 @@ function Card({
   onClick,
   gradient,
   fullWidth = false,
+  disabled = false,
 }) {
   return (
     <div
       style={{
-        flex: fullWidth ? "1 1 100%" : "1 1 400px", // 🔸 fullWidth면 한 줄 전체
+        flex: fullWidth ? "1 1 100%" : "1 1 400px",
         padding: "20px",
         background: "#f9fafb",
         borderRadius: "12px",
-        border: "1px solid #e5e7eb",
+        border: "none", // ✅ 테두리 제거
       }}
     >
       <h3>{title}</h3>
@@ -278,25 +380,30 @@ function Card({
           placeholder={placeholder}
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          disabled={disabled}
           style={{
             flex: 1,
             padding: "10px",
             borderRadius: "8px",
             border: "1px solid #d1d5db",
+            backgroundColor: disabled ? "#e5e7eb" : "white",
           }}
         />
         <button
           onClick={onClick}
+          disabled={disabled}
           style={{
             padding: "10px 16px",
-            background: `linear-gradient(135deg, ${gradient})`,
+            background: disabled
+              ? "#9ca3af"
+              : `linear-gradient(135deg, ${gradient})`,
             color: "white",
             borderRadius: "8px",
             border: "none",
-            cursor: "pointer",
+            cursor: disabled ? "not-allowed" : "pointer",
           }}
         >
-          실행
+          {disabled ? "계산 중..." : "실행"}
         </button>
       </div>
     </div>

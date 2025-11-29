@@ -38,17 +38,17 @@ ITEM_USERS = [np.sort(R_T[i].indices) for i in range(N_GAMES)]
 ITEM_USER_LEN = np.array([len(u) for u in ITEM_USERS])
 SQRT_ITEM_USER_LEN = np.sqrt(ITEM_USER_LEN)
 
-# Soft-IDF → 기존 IDF보다 훨씬 약하게 (폭발적 감소 방지)
-IDF = np.log(1 + N_USERS / (1 + ITEM_USER_LEN)) ** 0.3   # ★ 개선 포인트
+# Soft IDF
+IDF = np.log(1 + N_USERS / (1 + ITEM_USER_LEN)) ** 0.15
 
 # ============================================================
-# 2. Hyper-parameters (튜닝됨)
+# 2. Hyper-parameters
 # ============================================================
-BETA = 3                # 두 게임이 같이 평가된 횟수 보정
-MIN_INTERSECTION = 1     # ★ 핵심! 원래 2 → 1로 낮춰서 sim=0 방지
-MAX_CANDIDATES = 200
-MAX_RATED_ITEMS = 200
-POPULARITY_CAP = 10000    # 너무 작은 것은 제거
+BETA = 1.5
+MIN_INTERSECTION = 1
+MAX_CANDIDATES = 100
+MAX_RATED_ITEMS = 50
+POPULARITY_CAP = 2000
 
 # ============================================================
 # 3. Two-pointer Intersection
@@ -69,14 +69,13 @@ def fast_intersection_size(a, b):
     return cnt
 
 # ============================================================
-# 4. item-item similarity (with stability)
+# 4. item-item similarity
 # ============================================================
-@lru_cache(maxsize=1_000_000)
+@lru_cache(maxsize=None)
 def item_similarity(i_idx, j_idx):
     users_i = ITEM_USERS[i_idx]
     users_j = ITEM_USERS[j_idx]
 
-    # intersection
     inter_cnt = fast_intersection_size(users_i, users_j)
     if inter_cnt < MIN_INTERSECTION:
         return 0.0
@@ -87,10 +86,7 @@ def item_similarity(i_idx, j_idx):
 
     sim = inter_cnt / denom
 
-    # intersection discount
     sim *= min(inter_cnt / BETA, 1.0)
-
-    # soft IDF penalty (한 번만)
     sim *= IDF[i_idx]
 
     return sim
@@ -120,7 +116,7 @@ def top_k_recommend(scores_dict, k=5):
     return sorted_items[:k]
 
 # ============================================================
-# 7. recommend_by_item (최종 추천 함수)
+# 7. recommend_by_item
 # ============================================================
 def recommend_by_item(user_id: int):
 
@@ -128,6 +124,7 @@ def recommend_by_item(user_id: int):
         return {
             "type": "item_based",
             "input_user_id": user_id,
+            "scores": {},
             "result": [],
             "message": "사용자가 존재하지 않습니다."
         }
@@ -140,15 +137,12 @@ def recommend_by_item(user_id: int):
         rated_items = rated_items[:MAX_RATED_ITEMS]
         rated_set = set(rated_items)
 
-    # ---------------------------------------------------------
-    # Step 1. 보다 강한 후보 아이템 수집
-    # ---------------------------------------------------------
+    # Step 1. 후보 수집
     common_counter = Counter()
 
     for item in rated_items:
         users = ITEM_USERS[item]
 
-        # 인기 과한 게임 제한 완화
         if len(users) > POPULARITY_CAP:
             users = users[:POPULARITY_CAP]
 
@@ -156,8 +150,6 @@ def recommend_by_item(user_id: int):
             for g in R[u].indices:
                 if ITEM_USER_LEN[g] == 0:
                     continue
-
-                # 약한 TF-IDF
                 common_counter[g] += 1 / np.sqrt(1 + ITEM_USER_LEN[g])
 
     candidate_items = [
@@ -169,18 +161,15 @@ def recommend_by_item(user_id: int):
         return {
             "type": "item_based",
             "input_user_id": user_id,
+            "scores": {},
             "result": [],
             "message": "추천 후보가 없습니다."
         }
 
-    # ---------------------------------------------------------
-    # Step 2. 예측 스코어 계산
-    # ---------------------------------------------------------
+    # Step 2. raw 점수 계산
     raw_scores = predict_item_scores(u_idx, candidate_items, rated_items)
 
-    # ---------------------------------------------------------
-    # Step 3. Min-Max Scaling
-    # ---------------------------------------------------------
+    # Step 3. Min-Max scaling
     vals = list(raw_scores.values())
     min_s, max_s = min(vals), max(vals)
 
@@ -191,14 +180,19 @@ def recommend_by_item(user_id: int):
         else:
             scaled_scores[item] = (s - min_s) / (max_s - min_s)
 
-    # ---------------------------------------------------------
-    # Step 4. Top-K
-    # ---------------------------------------------------------
+    # Step 4. Top-5
     top_items = top_k_recommend(scaled_scores, k=5)
+
+    # ★ 모든 후보를 제목:스코어로 매핑
+    scores_by_title = {
+        IDX2GAME[i]: float(s)
+        for i, s in scaled_scores.items()
+    }
 
     return {
         "type": "item_based",
         "input_user_id": user_id,
+        "scores": scores_by_title,  # ★ 전체 스코어 반환
         "result": [
             {"title": IDX2GAME[i], "sim": round(float(s), 5)}
             for i, s in top_items

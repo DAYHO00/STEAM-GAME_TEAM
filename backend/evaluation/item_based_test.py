@@ -5,65 +5,48 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from functools import lru_cache
 
-# -----------------------------
-# 경로 설정
-# -----------------------------
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.recommend import item_based
 
-# -----------------------------
-# 테스트 데이터 로드
-# -----------------------------
 TEST_PATH = PROJECT_ROOT / "backend" / "processed" / "test_6cols.csv"
-df_test = pd.read_csv(TEST_PATH, nrows=500)
+df_test = pd.read_csv(TEST_PATH, nrows=1000)
 
 print("Test loaded:", df_test.shape)
 
-# -----------------------------
-# 추천 결과 캐싱
-# -----------------------------
-@lru_cache(maxsize=50_000)
-def get_user_result(user_id):
+@lru_cache(maxsize=5_000_000)
+def get_res(uid):
     try:
-        return item_based.recommend_by_item(int(user_id))
+        return item_based.recommend_by_item(int(uid))
     except:
         return None
 
-
-# -----------------------------
-# 메트릭 계산 준비
-# -----------------------------
-true_labels = []
-scores = []
-hit5_list = []
-ndcg5_list = []
+true_labels, scores, hit5_list, ndcg5_list = [], [], [], []
 
 for _, row in df_test.iterrows():
-    user_id = int(row["user_id"])
+    uid = int(row["user_id"])
     title = row["title"]
     y_true = int(row["is_recommended"])
 
-    result = get_user_result(user_id)
+    res = get_res(uid)
 
-    if result is None:
+    if res is None:
         sim_score = 0.0
         hit5 = 0
         ndcg5 = 0
     else:
-        # Top-K list 안에서 title에 해당하는 sim을 가져온다
-        top_items = result.get("result", [])
+        # raw score (전체 후보에서 title 점수 가져오기)
+        sim_score = float(res["scores"].get(title, 0.0))
 
-        sim_score = 0.0
+        # Top-5 hit 계산
+        top_items = res["result"]
         hit5 = 0
-        ndcg5 = 0
-
+        ndcg5 = 0.0
         for rank, item in enumerate(top_items):
             if item["title"] == title:
-                sim_score = item["sim"]         # ★ sim 점수 그대로 사용
-                hit5 = 1                        # Top-5 안에 있음
-                ndcg5 = 1 / np.log2(rank + 2)   # NDCG 계산
+                hit5 = 1
+                ndcg5 = 1 / np.log2(rank + 2)
                 break
 
     true_labels.append(y_true)
@@ -76,37 +59,31 @@ scores = np.array(scores)
 hit5_list = np.array(hit5_list)
 ndcg5_list = np.array(ndcg5_list)
 
-
-# -----------------------------
 # Classification Metrics
-# -----------------------------
-threshold = 0.1
-pred_labels = (scores >= threshold).astype(int)
+threshold = 0.05
+pred = (scores >= threshold).astype(int)
 
-TP = int(((pred_labels == 1) & (true_labels == 1)).sum())
-FP = int(((pred_labels == 1) & (true_labels == 0)).sum())
-TN = int(((pred_labels == 0) & (true_labels == 0)).sum())
-FN = int(((pred_labels == 0) & (true_labels == 1)).sum())
+TP = int(((pred == 1) & (true_labels == 1)).sum())
+FP = int(((pred == 1) & (true_labels == 0)).sum())
+TN = int(((pred == 0) & (true_labels == 0)).sum())
+FN = int(((pred == 0) & (true_labels == 1)).sum())
 
 precision = TP / (TP + FP) if (TP + FP) else 0
 recall = TP / (TP + FN) if (TP + FN) else 0
-f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) else 0
+f1 = (2 * precision * recall) / (precision + recall) if precision + recall else 0
 accuracy = (TP + TN) / len(true_labels)
 
-
-# -----------------------------
-# AUROC 계산
-# -----------------------------
+# AUROC
 thresholds = np.linspace(0, 1, 20)
 tprs, fprs = [], []
 
 for t in thresholds:
-    pred = (scores >= t).astype(int)
+    pl = (scores >= t).astype(int)
 
-    tp = int(((pred == 1) & (true_labels == 1)).sum())
-    fp = int(((pred == 1) & (true_labels == 0)).sum())
-    tn = int(((pred == 0) & (true_labels == 0)).sum())
-    fn = int(((pred == 0) & (true_labels == 1)).sum())
+    tp = int(((pl == 1) & (true_labels == 1)).sum())
+    fp = int(((pl == 1) & (true_labels == 0)).sum())
+    tn = int(((pl == 0) & (true_labels == 0)).sum())
+    fn = int(((pl == 0) & (true_labels == 1)).sum())
 
     tpr = tp / (tp + fn) if (tp + fn) else 0
     fpr = fp / (fp + tn) if (fp + tn) else 0
@@ -114,12 +91,13 @@ for t in thresholds:
     tprs.append(tpr)
     fprs.append(fpr)
 
-auroc = float(np.trapezoid(tprs, fprs))
+# 정렬된 ROC 커브 만들기
+pairs = sorted(zip(fprs, tprs), key=lambda x: x[0])
+fprs_sorted, tprs_sorted = zip(*pairs)
 
+# np.trapezoid → 정상적 곡선 적분
+auroc = float(np.trapezoid(tprs_sorted, fprs_sorted))
 
-# -----------------------------
-# 결과 출력
-# -----------------------------
 print("\n=== Item-based Evaluation ===")
 print(f"Threshold: {threshold}")
 print(f"Accuracy:  {accuracy:.4f}")
@@ -127,12 +105,9 @@ print(f"Precision: {precision:.4f}")
 print(f"Recall:    {recall:.4f}")
 print(f"F1 Score:  {f1:.4f}")
 print(f"AUROC:     {auroc:.4f}")
-print(f"Hit@5:     {hit5_list.mean():.4f}")
-print(f"NDCG@5:    {ndcg5_list.mean():.4f}")
+print(f"Hit@10:     {hit5_list.mean():.4f}")
+print(f"NDCG@10:    {ndcg5_list.mean():.4f}")
 
-# -----------------------------
-# ROC Curve
-# -----------------------------
 plt.figure(figsize=(6,6))
 plt.plot(fprs, tprs, marker="o")
 plt.plot([0,1], [0,1], "--")

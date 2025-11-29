@@ -44,7 +44,6 @@ function App() {
     }
   };
 
-  // 🔹 label을 Card의 title과 동일하게 맞춰줌
   const handleUserBased = () =>
     handleFetch(`${BASE_URL}/recommend/user/${userId}`, "1. User-based");
 
@@ -88,6 +87,7 @@ function App() {
     return "-";
   };
 
+  // 🔹 게이지를 더 스무스하게: 작은 증가폭 + 짧은 간격
   useEffect(() => {
     let intervalId;
     if (loading) {
@@ -95,9 +95,9 @@ function App() {
       intervalId = setInterval(() => {
         setProgress((prev) => {
           if (prev >= 90) return prev;
-          return prev + 2;
+          return prev + 0.2; // 0.2%씩 천천히 증가
         });
-      }, 200);
+      }, 50); // 50ms마다 업데이트 (부드러운 애니메이션)
     } else {
       setProgress(0);
     }
@@ -314,7 +314,7 @@ function App() {
                     height: "100%",
                     background:
                       "linear-gradient(90deg, #38bdf8, #6366f1, #a855f7)",
-                    transition: "width 0.2s ease-out",
+                    transition: "width 0.5s cubic-bezier(0.4, 0, 0.2, 1)", // 더 부드러운 이징
                     boxShadow: "0 0 6px rgba(59,130,246,0.8)",
                   }}
                 />
@@ -342,7 +342,7 @@ function App() {
           {result && (
             <div style={{ marginTop: "20px" }}>
               <h2 style={{ margin: 0, fontSize: "1.1rem", color: "#111827" }}>
-                추천 결과
+                추천 결과 {currentLabel && `- ${currentLabel}`}
               </h2>
               <div
                 style={{

@@ -18,11 +18,11 @@ META_PATH  = PROJECT_ROOT / "backend" / "data" / "model" / "bpr_meta.pkl"
 TEST_CSV = PROJECT_ROOT / "backend" / "processed" / "test_6cols.csv"
 
 # 테스트에 사용할 샘플 개수 (None 이면 전체)
-SAMPLE_SIZE = 500
+SAMPLE_SIZE = 100000
 # SAMPLE_SIZE = None
 
 # 한 유저에 대해 추천받을 개수 (평가용 Top-K)
-K_EVAL = 20    # 예: Top-20 추천 기준으로 평가
+K_EVAL = 100    # 예: Top-20 추천 기준으로 평가
 
 
 # ----------------- 모델 로드 -----------------

@@ -207,12 +207,12 @@ def fit_model(train_df: pd.DataFrame, model_path, meta_path):
         i_idx=i_idx,
         n_users=n_users,
         n_items=n_items,
-        n_factors=32,
-        epochs=5,
+        n_factors=128,
+        epochs=10,
         batch_size=4096,
         num_batches_per_epoch=1000,
-        lr=0.05,
-        reg=1e-4,
+        lr=0.01,
+        reg=1e-2,
     )
 
     # 모델 저장

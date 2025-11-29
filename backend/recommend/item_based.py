@@ -5,13 +5,17 @@ from scipy.sparse import csr_matrix
 from collections import Counter
 from functools import lru_cache
 
+# ============================================================
 # 0. Load Data
+# ============================================================
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_PATH = BASE_DIR / "processed" / "train_6cols.csv"
 df = pd.read_csv(DATA_PATH)
 print(f"item-based 데이터 로드 완료. shape={df.shape}")
 
+# ============================================================
 # 1. Global Initialization
+# ============================================================
 USER_IDS = df["user_id"].unique()
 GAME_TITLES = df["title"].unique()
 
@@ -34,16 +38,21 @@ ITEM_USERS = [np.sort(R_T[i].indices) for i in range(N_GAMES)]
 ITEM_USER_LEN = np.array([len(u) for u in ITEM_USERS])
 SQRT_ITEM_USER_LEN = np.sqrt(ITEM_USER_LEN)
 
-IDF = np.log(1 + N_USERS / (1 + ITEM_USER_LEN))
+# Soft-IDF → 기존 IDF보다 훨씬 약하게 (폭발적 감소 방지)
+IDF = np.log(1 + N_USERS / (1 + ITEM_USER_LEN)) ** 0.3   # ★ 개선 포인트
 
-# 2. Hyper-parameters
-BETA = 5
-MIN_INTERSECTION = 2
-MAX_CANDIDATES = 50
-MAX_RATED_ITEMS = 100
-POPULARITY_CAP = 500   # 지나치게 인기 많은 게임 제외
+# ============================================================
+# 2. Hyper-parameters (튜닝됨)
+# ============================================================
+BETA = 3                # 두 게임이 같이 평가된 횟수 보정
+MIN_INTERSECTION = 1     # ★ 핵심! 원래 2 → 1로 낮춰서 sim=0 방지
+MAX_CANDIDATES = 200
+MAX_RATED_ITEMS = 200
+POPULARITY_CAP = 10000    # 너무 작은 것은 제거
 
+# ============================================================
 # 3. Two-pointer Intersection
+# ============================================================
 def fast_intersection_size(a, b):
     i = j = cnt = 0
     la, lb = len(a), len(b)
@@ -59,12 +68,15 @@ def fast_intersection_size(a, b):
             j += 1
     return cnt
 
-# 4. item-item similarity (with popularity penalty)
-@lru_cache(maxsize=300_000)
+# ============================================================
+# 4. item-item similarity (with stability)
+# ============================================================
+@lru_cache(maxsize=1_000_000)
 def item_similarity(i_idx, j_idx):
     users_i = ITEM_USERS[i_idx]
     users_j = ITEM_USERS[j_idx]
 
+    # intersection
     inter_cnt = fast_intersection_size(users_i, users_j)
     if inter_cnt < MIN_INTERSECTION:
         return 0.0
@@ -74,21 +86,19 @@ def item_similarity(i_idx, j_idx):
         return 0.0
 
     sim = inter_cnt / denom
+
+    # intersection discount
     sim *= min(inter_cnt / BETA, 1.0)
 
-    # --- 인기 게임 패널티 적용 ---
+    # soft IDF penalty (한 번만)
     sim *= IDF[i_idx]
-    sim *= IDF[j_idx]
 
     return sim
 
-# 5. 예측값 계산
+# ============================================================
+# 5. score 계산
+# ============================================================
 def predict_item_scores(user_idx, candidate_items, rated_items):
-    """
-    candidate_items: 추천 후보 아이템 리스트
-    rated_items: 사용자가 추천한 아이템 리스트
-    return: {item_idx: score}
-    """
     scores = {}
 
     for item in candidate_items:
@@ -96,19 +106,22 @@ def predict_item_scores(user_idx, candidate_items, rated_items):
         for r in rated_items:
             sim = item_similarity(item, r)
             if sim > 0:
-                s += sim  # weighted sum
+                s += sim
 
         scores[item] = s
 
     return scores
 
-# 6. Top-K 추출만 전담하는 함수
+# ============================================================
+# 6. Top-K
+# ============================================================
 def top_k_recommend(scores_dict, k=5):
     sorted_items = sorted(scores_dict.items(), key=lambda x: x[1], reverse=True)
     return sorted_items[:k]
 
-
-# 7. recommend_by_item
+# ============================================================
+# 7. recommend_by_item (최종 추천 함수)
+# ============================================================
 def recommend_by_item(user_id: int):
 
     if user_id not in USER2IDX:
@@ -127,19 +140,25 @@ def recommend_by_item(user_id: int):
         rated_items = rated_items[:MAX_RATED_ITEMS]
         rated_set = set(rated_items)
 
-    # Step 1. 후보 아이템 수집 (TF-IDF)
+    # ---------------------------------------------------------
+    # Step 1. 보다 강한 후보 아이템 수집
+    # ---------------------------------------------------------
     common_counter = Counter()
 
     for item in rated_items:
         users = ITEM_USERS[item]
+
+        # 인기 과한 게임 제한 완화
         if len(users) > POPULARITY_CAP:
             users = users[:POPULARITY_CAP]
 
         for u in users:
             for g in R[u].indices:
-                if ITEM_USER_LEN[g] > POPULARITY_CAP:
+                if ITEM_USER_LEN[g] == 0:
                     continue
-                common_counter[g] += 1 / (1 + ITEM_USER_LEN[g])
+
+                # 약한 TF-IDF
+                common_counter[g] += 1 / np.sqrt(1 + ITEM_USER_LEN[g])
 
     candidate_items = [
         g for g, _ in common_counter.most_common(MAX_CANDIDATES)
@@ -154,10 +173,14 @@ def recommend_by_item(user_id: int):
             "message": "추천 후보가 없습니다."
         }
 
-    # Step 2. 예측값 계산 
+    # ---------------------------------------------------------
+    # Step 2. 예측 스코어 계산
+    # ---------------------------------------------------------
     raw_scores = predict_item_scores(u_idx, candidate_items, rated_items)
 
+    # ---------------------------------------------------------
     # Step 3. Min-Max Scaling
+    # ---------------------------------------------------------
     vals = list(raw_scores.values())
     min_s, max_s = min(vals), max(vals)
 
@@ -168,7 +191,9 @@ def recommend_by_item(user_id: int):
         else:
             scaled_scores[item] = (s - min_s) / (max_s - min_s)
 
-    # Step 4. Top-K 추천선정
+    # ---------------------------------------------------------
+    # Step 4. Top-K
+    # ---------------------------------------------------------
     top_items = top_k_recommend(scaled_scores, k=5)
 
     return {

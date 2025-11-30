@@ -17,7 +17,7 @@ if not TEST_CSV.exists():
 
 # 테스트용으로 500개에 대해서만 처리
 # 전체 데이터로 평가하려면 SAMPLE_SIZE = None 으로 바꾸기
-SAMPLE_SIZE = 500
+SAMPLE_SIZE = 300
 # SAMPLE_SIZE = None
 
 if SAMPLE_SIZE is None:
@@ -78,7 +78,7 @@ true_labels = np.array(true_labels)
 pred_scores = np.array(pred_scores)
 
 # ----------------- 단일 threshold 기준 평가 -----------------
-threshold = 0.5
+threshold = 0.01
 pred_labels = (pred_scores >= threshold).astype(int)
 
 TP = int(((pred_labels == 1) & (true_labels == 1)).sum())
@@ -119,6 +119,61 @@ tpr_sorted = tpr_arr[sort_idx]
 
 auroc = float(np.trapezoid(tpr_sorted, fpr_sorted))
 
+# =========================
+# Ranking metrics 추가: Hit@K, NDCG@K, MRR
+# =========================
+
+def hit_at_k(y_true, scores, k=5):
+    n = len(y_true)
+    if n == 0:
+        return 0
+    actual_k = min(k, n)
+    order = np.argsort(scores)[::-1][:actual_k]
+    return int(np.any(y_true[order] == 1))
+
+def ndcg_at_k(y_true, scores, k=5):
+    n = len(y_true)
+    if n == 0:
+        return 0.0
+    actual_k = min(k, n)
+    order = np.argsort(scores)[::-1][:actual_k]
+    gains = (2 ** y_true[order] - 1)
+    discounts = 1 / np.log2(np.arange(1, actual_k + 1) + 1)
+    dcg = np.sum(gains * discounts)
+
+    ideal_order = np.argsort(y_true)[::-1][:actual_k]
+    ideal_gains = (2 ** y_true[ideal_order] - 1)
+    idcg = np.sum(ideal_gains * discounts)
+    return dcg / idcg if idcg > 0 else 0.0
+
+def mrr_score(y_true, scores):
+    n = len(y_true)
+    if n == 0:
+        return 0.0
+    order = np.argsort(scores)[::-1]
+    for rank, idx in enumerate(order, start=1):
+        if y_true[idx] == 1:
+            return 1.0 / rank
+    return 0.0
+
+# 사용자 단위 평가 위해 그룹핑 (df_test는 user_id, title, is_recommended)
+df_test["pred_score"] = pred_scores
+results = []
+
+for user, group in df_test.groupby("user_id"):
+    y_true = group["is_recommended"].values
+    y_score = group["pred_score"].values
+
+    results.append({
+        "hit5": hit_at_k(y_true, y_score, 5),
+        "ndcg5": ndcg_at_k(y_true, y_score, 5),
+        "hit10": hit_at_k(y_true, y_score, 10),
+        "ndcg10": ndcg_at_k(y_true, y_score, 10),
+        "mrr": mrr_score(y_true, y_score)
+    })
+
+rank_eval = pd.DataFrame(results)
+
 # ----------------- 최종 출력 -----------------
 print("\n=== Evaluation Results ===")
 print(f"Number of test rows: {len(df_test)}")
@@ -129,6 +184,16 @@ print(f"Recall:    {recall:.6f}")
 print(f"F1-score:  {f1:.6f}")
 print(f"Accuracy:  {accuracy:.6f}")
 print(f"AUROC (sweep 0->1 step 0.05): {auroc:.6f}")
+
+print("\n--- Ranking-based Metrics ---")
+print(f"Hit@5  (Recall@5): {rank_eval['hit5'].mean():.6f}")
+print(f"NDCG@5:            {rank_eval['ndcg5'].mean():.6f}")
+print(f"Hit@10 (Recall@10): {rank_eval['hit10'].mean():.6f}")
+print(f"NDCG@10:            {rank_eval['ndcg10'].mean():.6f}")
+print(f"MRR:                {rank_eval['mrr'].mean():.6f}")
+
+print("pred_scores stats (global):")
+print(" min, 25, 50, 75, 90, 95, 99, max:",np.percentile(pred_scores, [0,25,50,75,90,95,99,100]))
 
 # ----------------- ROC 시각화 -----------------
 plt.figure(figsize=(6, 6))

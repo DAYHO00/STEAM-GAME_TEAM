@@ -38,10 +38,10 @@ SQRT_ITEM_USER_LEN = np.sqrt(ITEM_USER_LEN)
 IDF = np.log(1 + N_USERS / (1 + ITEM_USER_LEN))
 
 # 2. Hyper-parameters
-BETA = 5
-MIN_INTERSECTION = 2
-MAX_CANDIDATES = 50
-MAX_RATED_ITEMS = 100
+BETA = 1.5
+MIN_INTERSECTION = 1
+MAX_CANDIDATES = 100
+MAX_RATED_ITEMS = 50
 POPULARITY_CAP = 500   # 지나치게 인기 많은 게임 제외
 
 # 3. Two-pointer Intersection
@@ -61,7 +61,7 @@ def fast_intersection_size(a, b):
     return cnt
 
 # 4. item-item similarity (advanced)
-@lru_cache(maxsize=300_000)
+@lru_cache(maxsize=200_000)
 def item_similarity_advanced(i_idx, j_idx):
     """
     아래의 식을 이용하여 유사도 계산함

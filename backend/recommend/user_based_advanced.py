@@ -48,7 +48,7 @@ W_P_SERIES = pd.Series(np.log(N_USERS / n_p), index=GAME_TITLES_UNIQUE)
 W_P_ARR = W_P_SERIES.values                              # numpy array로 캐시
 
 # 3. 전역 파라미터
-BETA = 5      # 교집합 감쇠 기준값
+BETA = 5     # 교집합 감쇠 기준값
 K = 20        # 이웃 수
 MIN_INTERSECTION = 3      # 후보 이웃으로 인정할 최소 공통 게임 수
 MAX_CANDIDATES = 5000     # 유사도 계산 대상 최대 이웃 수
@@ -87,7 +87,7 @@ for uidx in range(len(USER_IDS_UNIQUE)):
         ALL_ITEMS_PER_USER[uidx] = np.unique(np.concatenate([a, b]))
 
 # Advanced similarity parameters
-ALPHA = 0.8
+ALPHA = 0.9
 EPSILON = 1e-6
 
 print(f"✅ 전역 초기화 완료. 희소 행렬 Shape: {R_MATRIX_SPARSE.shape}")

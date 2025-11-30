@@ -17,7 +17,7 @@ if not TEST_CSV.exists():
 
 # 테스트용으로 500개에 대해서만 처리
 # 전체 데이터로 평가하려면 SAMPLE_SIZE = None 으로 바꾸기
-SAMPLE_SIZE = 300
+SAMPLE_SIZE = 50
 # SAMPLE_SIZE = None
 
 if SAMPLE_SIZE is None:

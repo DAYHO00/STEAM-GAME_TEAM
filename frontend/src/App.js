@@ -95,9 +95,9 @@ function App() {
       intervalId = setInterval(() => {
         setProgress((prev) => {
           if (prev >= 90) return prev;
-          return prev + 0.2; // 0.2%씩 천천히 증가
+          return prev + 0.1; // 0.2%씩 천천히 증가
         });
-      }, 50); // 50ms마다 업데이트 (부드러운 애니메이션)
+      }, 100); // 50ms마다 업데이트 (부드러운 애니메이션)
     } else {
       setProgress(0);
     }

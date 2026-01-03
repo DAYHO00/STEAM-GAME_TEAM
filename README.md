@@ -68,36 +68,37 @@ Dataset: Kaggle Steam Recommendation Dataset
 ## 📁 프로젝트 구조
 
 ```
-steam/
-├── backend/
-│   ├── data/
-│   │   ├── games.csv
-│   │   ├── recommendations.csv
-│   │   ├── users.csv
-│   │   └── model/
-│   │       ├── bpr_model.pt
-│   │       └── bpr_meta.pkl
-│   │
-│   ├── processed/
-│   ├── evaluation/
-│   ├── recommend/
-│   │   ├── item_based.py
-│   │   ├── item_based_advanced.py
-│   │   ├── user_based.py
-│   │   ├── user_based_advanced.py
-│   │   └── model_based.py
-│   │
-│   ├── preprocess.py
-│   ├── model.py
-│   ├── main.py
-│   └── .venv/
-│
-├── frontend/
-│   ├── public/
-│   ├── src/
-│   └── README.md
-│
-└── README.md
+.
+├── steam/
+├── ├── backend/
+├── │   ├── data/
+├── │   │   ├── games.csv
+├── │   │   ├── recommendations.csv
+├── │   │   ├── users.csv
+├── │   │   └── model/
+├── │   │       ├── bpr_model.pt
+├── │   │       └── bpr_meta.pkl
+├── │   │
+├── │   ├── processed/
+├── │   ├── evaluation/
+├── │   ├── recommend/
+├── │   │   ├── item_based.py
+├── │   │   ├── item_based_advanced.py
+├── │   │   ├── user_based.py
+├── │   │   ├── user_based_advanced.py
+├── │   │   └── model_based.py
+├── │   │
+├── │   ├── preprocess.py
+├── │   ├── model.py
+├── │   ├── main.py
+├── │   └── .venv/
+├── │
+├── ├── frontend/
+├── │   ├── public/
+├── │   ├── src/
+├── │   └── README.md
+├── │
+└── └── README.md
 
 ```
 ## 🚀 시작하기

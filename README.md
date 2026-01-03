@@ -113,16 +113,16 @@ steam/
 
 
 ### 📊 데이터 다운로드
-```basham 게임 추천 데이터는 Kaggle에서 제공합니다.
-
+```bash
+게임 추천 데이터는 Kaggle에서 제공합니다.
 https://www.kaggle.com/datasets/antonkozyriev/game-recommendations-on-steam
-
 아래 파일을 다운로드하여 `/backend/data` 폴더에 위치시켜 주세요.
 
 - games.csv
 - recommendations.csv
 - users.csv
 ```
+
 # ⚙️ Backend 실행
 
 ```

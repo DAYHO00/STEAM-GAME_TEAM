@@ -111,11 +111,9 @@ steam/
 - npm
 - Kaggle Steam Dataset
 
----
 
 ### 📊 데이터 다운로드
-
-Steam 게임 추천 데이터는 Kaggle에서 제공합니다.
+```basham 게임 추천 데이터는 Kaggle에서 제공합니다.
 
 https://www.kaggle.com/datasets/antonkozyriev/game-recommendations-on-steam
 
@@ -125,8 +123,7 @@ https://www.kaggle.com/datasets/antonkozyriev/game-recommendations-on-steam
 - recommendations.csv
 - users.csv
 ```
-
-### ⚙️ Backend 실행
+# ⚙️ Backend 실행
 
 ```
 cd backend

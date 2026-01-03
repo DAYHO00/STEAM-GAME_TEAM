@@ -1,7 +1,6 @@
 # 🎮 Steam Game Recommendation System
 
-사용자 행동 데이터를 기반으로 다양한 추천 알고리즘을 적용한  
-게임 추천 웹 애플리케이션
+사용자 행동 데이터를 기반으로 다양한 추천 알고리즘을 적용한 게임 추천 웹 애플리케이션
 
 ## 목차
 
@@ -10,7 +9,6 @@
 - [프로젝트 구조](#-프로젝트-구조)
 - [시작하기](#-시작하기)
 - [핵심 기능](#-핵심-기능)
-- [데이터 흐름](#-데이터-흐름)
 
 ---
 
@@ -40,26 +38,36 @@
 ## 🛠 기술 스택
 
 ### Frontend
+```
 Framework: React (CRA)
 Language: JavaScript
 UI: HTML, CSS
+```
 
 ### Backend
+```
 Framework: FastAPI
 Language: Python
 Server: Uvicorn
+```
 
 ### Machine Learning
+```
 Libraries: NumPy, Pandas, SciPy
 Deep Learning: PyTorch
 Model: BPR-MF
-
+```
 ### Environment
+```
 OS: Windows
 Virtual Env: Python venv
 Dataset: Kaggle Steam Recommendation Dataset
 
+---
+
 ## 📁 프로젝트 구조
+
+```
 steam/
 │
 ├── backend/
@@ -91,6 +99,7 @@ steam/
 │ └── README.md
 │
 └── README.md
+```
 
 ---
 
@@ -115,46 +124,64 @@ https://www.kaggle.com/datasets/antonkozyriev/game-recommendations-on-steam
 - games.csv
 - recommendations.csv
 - users.csv
-
----
+```
 
 ### ⚙️ Backend 실행
 
-```bash
+```
 cd backend
 .venv\Scripts\Activate.ps1
 uvicorn main:app --reload
+```
 
 ### 데이터 전처리
+```
 python preprocess.py
+```
 
 ### 모델 학습
+```
 python model.py
+```
 
-🖥 Frontend 실행
+### 🖥 Frontend 실행
+```
 cd frontend
 npm install
 npm start
+```
+---
 
-💡 핵심 기능
-1. 데이터 전처리
+## 💡 핵심 기능
 
- 사용자–게임 상호작용 데이터 정제
- Train / Valid / Test 분리
+### 1. 데이터 전처리
 
-2. 추천 알고리즘
+```typescript
+- 사용자–게임 상호작용 데이터 정제
+- Train / Valid / Test 분리
+```
 
- Item-based / User-based 협업 필터링
- Jaccard Similarity 기반 개선 버전
- BPR-MF 모델 기반 추천
+### 2. 추천 알고리즘
 
-3. 성능 평가
+```
+- Item-based / User-based 협업 필터링
+- Jaccard Similarity 기반 개선 버전
+- BPR-MF 모델 기반 추천
+```
 
- F1-score
- Recall
- 알고리즘별 성능 비교
+### 3. 성능 평가
 
-🔄 데이터 흐름
+```
+- F1-score
+- Recall
+- 알고리즘별 성능 비교
+```
+
+---
+
+## 🔄 데이터 흐름
+
+```
 Kaggle Dataset
     ↓
 데이터 전처리
@@ -166,5 +193,5 @@ Kaggle Dataset
 성능 평가
     ↓
 Frontend 시각화
-
-
+```
+---

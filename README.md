@@ -1,102 +1,214 @@
 🎮 Steam Game Recommendation System
 
-- backend는 Python 기반으로 모델 학습 및 추천 로직을 수행.
-- frontend는 React 기반으로 결과를 시각화.
+사용자 행동 데이터를 기반으로 다양한 추천 알고리즘을 적용한
+게임 추천 웹 애플리케이션
 
-📂 프로젝트 구조
+목차
+
+주요 기능
+
+기술 스택
+
+프로젝트 구조
+
+시작하기
+
+핵심 기능
+
+데이터 흐름
+
+🎯 주요 기능
+다양한 추천 알고리즘 제공
+
+Item-based Collaborative Filtering
+
+User-based Collaborative Filtering
+
+Jaccard Similarity 기반 개선 알고리즘
+
+BPR-MF (Bayesian Personalized Ranking – Matrix Factorization) 모델
+
+모델 학습 및 추천
+
+사용자–아이템 상호작용 데이터 기반 학습
+
+PyTorch 기반 BPR-MF 모델 구현
+
+학습 결과 모델 저장 및 재사용
+
+성능 평가
+
+F1-score, Recall 등 추천 성능 지표 측정
+
+알고리즘별 성능 비교 스크립트 제공
+
+추천 결과 시각화
+
+React 기반 프론트엔드
+
+사용자별 추천 게임 목록 확인
+
+🛠 기술 스택
+Frontend
+Framework: React (CRA)
+Language: JavaScript
+UI: HTML, CSS
+
+Backend
+Framework: FastAPI
+Language: Python
+Server: Uvicorn
+
+Machine Learning
+Libraries: NumPy, Pandas, SciPy
+Deep Learning: PyTorch
+Model: BPR-MF
+
+Environment
+OS: Windows
+Virtual Env: Python venv
+Dataset: Kaggle Steam Recommendation Dataset
+
+📁 프로젝트 구조
 steam/
 │
-├─ backend/ # 추천 알고리즘 및 데이터 처리
-│ ├─ data/ # 원본 데이터 및 학습 결과
-│ │ ├─ games.csv
-│ │ ├─ recommendations.csv
-│ │ ├─ users.csv
-│ │ └─ model/
-│ │ ├─ bpr_model.pt
-│ │ └─ bpr_meta.pkl
-│ │
-│ ├─ evaluation/ # 검증용 스크립트 (F1-score, Recall 등)
-│ ├─ processed/ # test, train, valid data
-│ ├─ recommend/ # 추천 알고리즘 구현부
-│ ├─ main.py # 백엔드 실행 진입점 (FastAPI)
-│ ├─ model.py # BPR-MF 모델 학습
-│ ├─ preprocess.py # 데이터 전처리
-│ └─ .venv/ # 가상환경
+├── backend/
+│   ├── data/                     # 원본 데이터 및 학습 결과
+│   │   ├── games.csv
+│   │   ├── recommendations.csv
+│   │   ├── users.csv
+│   │   └── model/
+│   │       ├── bpr_model.pt
+│   │       └── bpr_meta.pkl
+│   │
+│   ├── processed/                # train / valid / test 데이터
+│   ├── evaluation/               # 성능 검증 스크립트
+│   ├── recommend/                # 추천 알고리즘 구현
+│   │   ├── item_based.py
+│   │   ├── item_based_advanced.py
+│   │   ├── user_based.py
+│   │   ├── user_based_advanced.py
+│   │   └── model_based.py
+│   │
+│   ├── preprocess.py             # 데이터 전처리
+│   ├── model.py                  # BPR-MF 모델 학습
+│   ├── main.py                   # FastAPI 실행 진입점
+│   └── .venv/                    # 가상환경
 │
-├─ frontend/ # React 프론트엔드
-│ ├─ public/
-│ ├─ src/
-│ └─ README.md # CRA 기본 설명서 (자동 생성)
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   └── README.md                 # CRA 기본 README
 │
-└─ README.md # 전체 프로젝트 설명서
+└── README.md                     # 전체 프로젝트 설명서
 
-📊 1. 데이터 다운로드
+🚀 시작하기
+사전 요구사항
 
-Steam 게임 추천 데이터는 Kaggle에서 제공합니다:
-(https://www.kaggle.com/datasets/antonkozyriev/game-recommendations-on-steam?select=recommendations.csv)
-아래 세 개의 파일을 다운로드하여 /backend/data 폴더에 넣으세요:
+Python 3.9+
 
-a. games.csv
-b. recommendations.csv
-c. users.csv
+Node.js 16+
 
-⚙️ 2. 실행 방법
+npm
 
-Backend (Python)
+Kaggle Steam Dataset
 
-1. 가상환경 활성화
-   cd backend
-   ..venv\Scripts\Activate.ps1
+📊 데이터 다운로드
 
-2. 백엔드 서버 실행
-   uvicorn main:app --reload
+Steam 추천 데이터는 Kaggle에서 제공합니다.
 
-3. 데이터 전처리
-   python preprocess.py
-   → train, valid, test 데이터가 자동으로 분리됩니다.
+https://www.kaggle.com/datasets/antonkozyriev/game-recommendations-on-steam
 
-4. 모델 학습
-   python model.py
-   → 학습 완료 후 /backend/data/model에
-   bpr_meta.pkl과 bpr_model.pt가 생성됩니다.
+아래 파일을 다운로드하여 /backend/data 폴더에 위치시켜 주세요.
 
-Frontend (React)
+games.csv
 
-1. 프론트엔드 실행
-   cd frontend
-   npm install
-   npm start
-   → 기본 포트(localhost:3000)에서 실행됩니다.
+recommendations.csv
 
-🧾 3. 검증 방법
+users.csv
 
-/backend/evaluation 폴더에는 다양한 추천 알고리즘의 성능을 측정하는 스크립트가 있습니다.
-다음 명령어로 검증 지표(F1-Score, Recall 등)를 확인할 수 있습니다.
+⚙️ Backend 실행
+cd backend
 
+# 가상환경 활성화
+.venv\Scripts\Activate.ps1
+
+# 서버 실행
+uvicorn main:app --reload
+
+데이터 전처리
+python preprocess.py
+
+
+→ train / valid / test 데이터 자동 생성
+
+모델 학습
+python model.py
+
+
+→ /backend/data/model에 학습 결과 저장
+
+🖥 Frontend 실행
+cd frontend
+npm install
+npm start
+
+
+기본 주소: http://localhost:3000
+
+💡 핵심 기능
+1. 데이터 전처리
+python preprocess.py
+
+
+사용자–게임 상호작용 데이터 정제
+
+학습/검증/테스트 데이터 분리
+
+2. 추천 알고리즘
+Item-based
+
+아이템 간 유사도 기반 추천
+
+User-based
+
+사용자 간 유사도 기반 추천
+
+Advanced Version
+
+Jaccard Similarity 적용
+
+희소성 문제 완화
+
+Model-based
+
+BPR-MF
+
+implicit feedback 기반 랭킹 최적화
+
+3. 성능 평가
 python item_based_test.py
-python item_based_test_advanced.py
 python user_based_test.py
-python user_based_test_advanced.py
 python model_based_test.py
 
-🧾 4. 핵심 알고리즘 위치
 
-모든 추천 알고리즘은 /backend/recommend 폴더에 구현되어 있습니다.
+F1-score
 
-item_based.py — 아이템 기반 협업 필터링
+Recall
 
-item_based_advanced.py — Jaccard 유사도 기반 개선 버전
+알고리즘별 성능 비교
 
-user_based.py — 사용자 기반 협업 필터링
-
-user_based_advanced.py — 사용자 Jaccard 개선 버전
-
-model_based.py — BPR-MF 모델 기반 추천
-
-🧾 5. 기술 스택
-
-Frontend : React.js, HTML, CSS, JavaScript
-Backend : Python, FastAPI, Uvicorn
-Machine : Learning NumPy, Pandas, SciPy, PyTorch
-Dataset : Kaggle Steam Recommendation Dataset
-Environment : Windows PowerShell + venv
+🔄 데이터 흐름
+Kaggle Dataset
+      ↓
+데이터 전처리 (preprocess.py)
+      ↓
+Train / Valid / Test 분리
+      ↓
+추천 알고리즘 학습
+      ↓
+추천 결과 생성
+      ↓
+성능 평가
+      ↓
+Frontend 시각화

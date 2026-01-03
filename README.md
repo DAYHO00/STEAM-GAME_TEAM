@@ -68,42 +68,38 @@ Dataset: Kaggle Steam Recommendation Dataset
 ## 📁 프로젝트 구조
 
 ```
-samadhi/
-├── frontend/
-│   ├── app/
-│   │   ├── (with-navbar)/
-│   │   │   ├── home/              # 메인 페이지
-│   │   │   ├── ready/             # 운동 준비 (4단계)
-│   │   │   └── record/            # 운동 기록
-│   │   └── (without-navbar)/
-│   │       ├── auth/              # 로그인/회원가입
-│   │       └── workout/           # 실시간 운동
-│   ├── components/
-│   │   ├── ready/                 # 운동 준비 UI
-│   │   ├── workout/               # 운동 중 UI
-│   │   ├── video/                 # 비디오 재생
-│   │   ├── webcam/                # 웹캠 처리
-│   │   └── timeline/              # 타임라인 클리퍼
-│   ├── lib/
-│   │   ├── mediapipe/
-│   │   │   └── angle-calculator.ts    # 관절 각도 계산
-│   │   └── poseClassifier/
-│   │       └── pose-classifier-with-vectorized.ts
-│   └── store/                     # Zustand 상태 관리
+steam/
+├── backend/
+│   ├── data/
+│   │   ├── games.csv
+│   │   ├── recommendations.csv
+│   │   ├── users.csv
+│   │   └── model/
+│   │       ├── bpr_model.pt
+│   │       └── bpr_meta.pkl
+│   │
+│   ├── processed/
+│   ├── evaluation/
+│   ├── recommend/
+│   │   ├── item_based.py
+│   │   ├── item_based_advanced.py
+│   │   ├── user_based.py
+│   │   ├── user_based_advanced.py
+│   │   └── model_based.py
+│   │
+│   ├── preprocess.py
+│   ├── model.py
+│   ├── main.py
+│   └── .venv/
 │
-└── backend/
-    └── src/main/java/com/capstone/samadhi/
-        ├── config/                # JWT, Security, S3, CORS
-        ├── security/              # 인증/인가
-        │   ├── jwt/              # JWT 필터 및 유틸
-        │   └── service/          # UserDetailsService
-        ├── record/               # 운동 기록
-        │   ├── entity/           # Record, TimeLine
-        │   └── service/          # 기록 저장/조회
-        ├── video/                # 샘플 영상
-        └── common/               # 공통 유틸 (S3, ResponseDto)
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   └── README.md
+│
+└── README.md
+
 ```
----
 ## 🚀 시작하기
 
 ### 사전 요구사항

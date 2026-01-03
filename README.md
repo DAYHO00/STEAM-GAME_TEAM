@@ -129,117 +129,71 @@ https://www.kaggle.com/datasets/antonkozyriev/game-recommendations-on-steam
 cd backend
 .venv\Scripts\Activate.ps1
 uvicorn main:app --reload
+```
 
-# 데이터 전처리
+### 데이터 전처리
+```
 python preprocess.py
 ```
 
-### Docker 배포
+### 모델 학습
+```
+python model.py
+```
 
+### Frontend 실행
 ```bash
-# 백엔드 이미지 빌드
-docker build -t samadhi-api ./backend
-
-# Docker Compose 실행
-cd backend
-docker-compose up -d
+cd frontend
+npm install
+npm start
 ```
 
 ---
 
 ## 💡 핵심 기능
 
-### 1. 자세 추적 및 각도 계산
+### 1. 데이터 전처리
 
-```typescript
-// 33개 관절 포인트에서 주요 각도 계산
-calculateAllAngles(landmarks: Landmark[]): JointAngles
+```
+- 사용자–게임 상호작용 데이터 정제
+- Train / Valid / Test 분리
 ```
 
-**계산 각도**
-- 팔: 팔꿈치, 어깨 (좌/우)
-- 다리: 무릎, 엉덩이 (좌/우)
-- 몸통: 척추, 정렬
-- 손목, 발목, 목
+### 2. 추천 알고리즘
 
-**특징**
-- 3D 공간 벡터 기반 계산
-- Dead Zone 필터 (±2도 떨림 방지)
-- Visibility 필터링 (임계값 0.5)
-
-### 2. 유사도 측정
-
-```typescript
-CalculateSimilarity(P1: number[], P2: number[], lambda: 1.0): number
+```
+- Item-based / User-based 협업 필터링
+- Jaccard Similarity 기반 개선 버전
+- BPR-MF 모델 기반 추천
 ```
 
-- **코사인 유사도**: 자세 방향성 비교
-- **결과**: 0-100점 범위
+### 3. 성능 평가
 
-### 3. 자세 분류
-
-```typescript
-classifyPoseWithVectorized(vectorized: number[]): string
 ```
-
-### 4. 타임라인 기록
-
-```typescript
-type Timeline = {
-  pose: string;
-  startTime: number;
-  endTime: number;
-  similarity: number;
-};
+- F1-score
+- Recall
+- 알고리즘별 성능 비교
 ```
-
-운동 중 자세별 구간을 자동 기록하고 평균 유사도를 계산합니다.
-
 ---
 
 ## 🔄 데이터 흐름
 
 ```
-웹캠/비디오 입력
+Kaggle Dataset
     ↓
-MediaPipe Pose Landmarker
+데이터 전처리
     ↓
-관절 좌표 추출 (33개)
+추천 모델 학습
     ↓
-벡터화 및 정규화
+추천 결과 생성
     ↓
-자세 분류 + 유사도 계산
+성능 평가
     ↓
-실시간 피드백
-    ↓
-타임라인 기록
-    ↓
-서버 저장 (MySQL + S3)
+Frontend 시각화
 ```
 
 
 ---
-
-
-## 🚀 배포
-
-### GitHub Actions CI/CD
-
-```yaml
-# main 브랜치 push 시 자동 배포
-- Docker 이미지 빌드
-- AWS ECR 푸시
-- EC2 SSH 접속
-- Docker Compose 재시작
-```
-
-### 환경 설정
-
-**Production**
-- `DEPLOY=prod` 환경변수 설정
-- SameSite=None, Secure Cookie 사용
-- AWS RDS MySQL
-- AWS S3 파일 저장
 
 
 

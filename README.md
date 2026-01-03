@@ -106,21 +106,21 @@ steam/
 ## 🚀 시작하기
 
 ### 사전 요구사항
-- Python 3.9+
-- Node.js 16+
-- npm
-- Kaggle Steam Dataset
+- Node.js 18+
+- Java 17+
+- MySQL 8.0+
+- Docker (선택)
 
+### Frontend 설정
 
-### 📊 데이터 다운로드
 ```bash
-게임 추천 데이터는 Kaggle에서 제공합니다.
-https://www.kaggle.com/datasets/antonkozyriev/game-recommendations-on-steam
-아래 파일을 다운로드하여 `/backend/data` 폴더에 위치시켜 주세요.
+cd frontend
+npm install
 
-- games.csv
-- recommendations.csv
-- users.csv
+# 환경 변수 설정 (.env.local)
+NEXT_PUBLIC_API_URL=http://localhost:8888
+
+npm run dev
 ```
 
 ### ⚙️ Backend 실행

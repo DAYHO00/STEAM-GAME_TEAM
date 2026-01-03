@@ -1,6 +1,6 @@
-# Samadhi - Personal Yoga Care Partner
+# 🎮 Steam Game Recommendation System
 
-MediaPipe 기반의 실시간 자세 추적 및 분석 시스템을 활용한 요가 운동 보조 웹 애플리케이션
+사용자 행동 데이터를 기반으로 다양한 추천 알고리즘을 적용한 게임 추천 웹 애플리케이션
 
 ## 목차
 
@@ -9,30 +9,30 @@ MediaPipe 기반의 실시간 자세 추적 및 분석 시스템을 활용한 �
 - [프로젝트 구조](#-프로젝트-구조)
 - [시작하기](#-시작하기)
 - [핵심 기능](#-핵심-기능)
-
+- [데이터 흐름](#-데이터-흐름)
+- 
 ---
 
 ## 🎯 주요 기능
 
-### 실시간 자세 분석
-- MediaPipe Pose Landmarker를 활용한 33개 관절 포인트 추적
-- 3D 공간에서의 정확한 관절 각도 계산
-- 코사인 유사도 실시간 유사도 측정 (0-100점)
+### 다양한 추천 알고리즘
+- Item-based Collaborative Filtering
+- User-based Collaborative Filtering
+- Jaccard Similarity 기반 개선 알고리즘
+- BPR-MF (Bayesian Personalized Ranking – Matrix Factorization)
 
-### 다양한 운동 방식
-- **샘플 영상**: 추천 요가 동작 영상 제공
-- **화면 공유**: 유튜브 영상 활용 운동
-- **웹캠 연동**: 실시간 자세 비교 및 피드백
+### 모델 학습 및 추천
+- 사용자–아이템 상호작용 데이터 기반 학습
+- PyTorch 기반 BPR-MF 모델 구현
+- 학습 결과 모델 저장 및 재사용
 
-### 자세 분류 시스템
-- 40가지 요가 자세 자동 인식 (Plank, Warrior, Tree, Bridge 등)
-- 좌우 반전 자동 대응
-- 벡터화된 자세 데이터 기반 분류 (임계값 90점)
+### 성능 평가
+- F1-score, Recall 기반 추천 성능 측정
+- 알고리즘별 성능 비교 스크립트 제공
 
-### 운동 기록 관리
-- 타임라인별 자세 분석 및 점수 기록
-- 필터링 및 검색 기능
-- 상세 운동 내역 조회
+### 추천 결과 시각화
+- React 기반 프론트엔드
+- 사용자별 추천 게임 목록 제공
 
 ---
 
@@ -40,28 +40,29 @@ MediaPipe 기반의 실시간 자세 추적 및 분석 시스템을 활용한 �
 
 ### Frontend
 ```
-Framework: Next.js 15 (App Router)
-Language: TypeScript
-UI: Tailwind CSS, Ant Design, Framer Motion
-State: Zustand
-AI/ML: MediaPipe Tasks Vision
+Framework: React (CRA)
+Language: JavaScript
+UI: HTML, CSS
 ```
 
 ### Backend
 ```
-Framework: Spring Boot 3.3.2
-Language: Java 17
-Database: MySQL
-Authentication: JWT
-ORM: JPA/Hibernate
+Framework: FastAPI
+Language: Python
+Server: Uvicorn
 ```
 
-### Infrastructure
+### Machine Learning
 ```
-Containerization: Docker
-Cloud: AWS (ECR, EC2, S3)
-CI/CD: GitHub Actions
+Libraries: NumPy, Pandas, SciPy
+Deep Learning: PyTorch
+Model: BPR-MF
 ```
+
+### Environment
+OS: Windows
+Virtual Env: Python venv
+Dataset: Kaggle Steam Recommendation Dataset
 
 ---
 
@@ -122,21 +123,15 @@ https://www.kaggle.com/datasets/antonkozyriev/game-recommendations-on-steam
 - users.csv
 ```
 
-### Backend 설정
+### Backend 실행
 
 ```bash
 cd backend
+.venv\Scripts\Activate.ps1
+uvicorn main:app --reload
 
-# 환경 변수 설정 (.env)
-DB_HOST=jdbc:mysql://localhost:3306/samadhi
-DB_USERNAME=root
-DB_PASSWORD=your_password
-SECURITY_SECRET_KEY=your_secret_key
-S3_ACCESS_KEY=your_access_key
-S3_SECRET_KEY=your_secret_key
-DEPLOY=local
-
-./gradlew bootRun
+# 데이터 전처리
+python preprocess.py
 ```
 
 ### Docker 배포
